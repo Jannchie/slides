@@ -119,28 +119,20 @@ watch(
   { flush: "sync" },
 )
 /**
- * How wide the editor is, which decides what it shows unasked: a sidebar has
- * no room for a slide list and a format pane beside the slide, so below these
- * widths each waits to be opened and then floats over the stage rather than
- * squeezing it. What the reader opens or closes stays as they left it.
+ * How wide the editor is, which decides whether the format pane shows unasked:
+ * a sidebar has no room for it beside the slide, so below this width it waits
+ * to be opened and then floats over the stage rather than squeezing it. What
+ * the reader opens or closes stays as they left it. The slide list is always
+ * there, as it is in a presentation program.
  */
 const width = ref(0)
 const COMPACT_INSPECTOR = 900
-const COMPACT_LIST = 640
 const inspectorChoice = ref<boolean>()
-const listChoice = ref<boolean>()
 const inspectorFloats = computed(() => width.value > 0 && width.value < COMPACT_INSPECTOR)
-const listFloats = computed(() => width.value > 0 && width.value < COMPACT_LIST)
 const inspectorOpen = computed({
   get: () => inspectorChoice.value ?? !inspectorFloats.value,
   set: (open) => {
     inspectorChoice.value = open
-  },
-})
-const listOpen = computed({
-  get: () => listChoice.value ?? !listFloats.value,
-  set: (open) => {
-    listChoice.value = open
   },
 })
 
@@ -1573,18 +1565,6 @@ const hasSelection = computed(() => selection.value.length > 0)
       :aria-label="t('deck.toolbar')"
     >
       <button
-        type="button"
-        class="slides-icon-button"
-        :class="{ 'slides-pressed': listOpen }"
-        :title="t('deck.slide.list')"
-        :aria-label="t('deck.slide.list')"
-        :aria-pressed="listOpen"
-        @click="listOpen = !listOpen"
-      >
-        <i class="i-jannchie-sidebar h-4 w-4" aria-hidden="true" />
-      </button>
-      <span class="mx-1 h-4 w-px bg-slides-line" aria-hidden="true" />
-      <button
         v-for="action in [
           { id: 'undo', icon: 'i-jannchie-undo', run: undo, disabled: !history.canUndo.value },
           { id: 'redo', icon: 'i-jannchie-redo', run: redo, disabled: !history.canRedo.value },
@@ -1944,9 +1924,7 @@ const hasSelection = computed(() => selection.value.length > 0)
 
     <div class="relative min-h-0 flex flex-1">
       <DeckSlideList
-        v-if="listOpen"
         class="slides-slide-list w-40 shrink-0 border-r border-slides-line bg-slides-bg"
-        :class="{ 'absolute inset-y-0 left-0 z-20 shadow-[var(--slides-shadow)]': listFloats }"
         :deck="deck"
         :slide-index="slideIndex"
         :editable="editable"
