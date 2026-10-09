@@ -27,7 +27,8 @@
     "./react": "./src/editor/react.tsx",
     "./pptx": "./src/editor/pptx.ts",
     "./uno": "./src/editor/uno.ts",
-    "./style.css": "./dist/style.css"
+    "./style.css": "./dist/style.css",
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "exports": {
@@ -59,7 +60,8 @@
         "types": "./dist/types/editor/uno.d.ts",
         "default": "./dist/uno.js"
       },
-      "./style.css": "./dist/style.css"
+      "./style.css": "./dist/style.css",
+      "./package.json": "./package.json"
     },
     "access": "public"
   },
