@@ -4,4 +4,5 @@
 export { default as DeckEditor } from "./components/DeckEditor.vue"
 export { default as DeckSlideView } from "./components/DeckSlideView"
 export type { DeckAssetStore } from "./host"
+export { DECK_THEMES, MINIMAL_DARK, MINIMAL_LIGHT, type DeckTheme } from "../index"
 export { deckLocale, deckLocales, setDeckLocale, type DeckLocale } from "./i18n"

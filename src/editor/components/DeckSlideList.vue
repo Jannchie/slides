@@ -242,7 +242,12 @@ watch(
                 class="pointer-events-none absolute left-0 top-0 block origin-top-left"
                 :style="{ transform: `scale(${thumbScale})` }"
               >
-                <DeckSlideView :slide="item" :deck-style="deck.style" :resolve-asset="resolveAsset" />
+                <DeckSlideView
+                  :slide="item"
+                  :deck-style="deck.style"
+                  :theme="deck.theme"
+                  :resolve-asset="resolveAsset"
+                />
               </span>
               <i
                 v-if="item.hidden"

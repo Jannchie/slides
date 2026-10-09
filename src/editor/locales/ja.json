@@ -202,5 +202,15 @@
   "deck.zoom.in": "拡大",
   "deck.zoom.out": "縮小",
   "deck.zoom.fit": "ウィンドウに合わせる",
-  "deck.zoom.actual": "実際のサイズ"
+  "deck.zoom.actual": "実際のサイズ",
+  "deck.field.theme": "テーマ",
+  "deck.field.themeColors": "テーマの色",
+  "deck.theme.minimal-light": "ミニマル白",
+  "deck.theme.minimal-dark": "ミニマル黒",
+  "deck.role.background": "背景",
+  "deck.role.surface": "面",
+  "deck.role.text": "文字",
+  "deck.role.muted": "控えめな文字",
+  "deck.role.accent": "アクセント",
+  "deck.role.line": "線"
 }

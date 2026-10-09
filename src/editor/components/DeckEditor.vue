@@ -45,6 +45,7 @@ import {
   type DeckNode,
   type DeckPath,
   type DeckSlide,
+  type DeckTheme,
   type TableEdit,
 } from "../../index"
 import { loadDeckFonts, px, readInlineDom, type DeckAlignment, type Point } from "../../dom"
@@ -53,6 +54,7 @@ import { announce, assertiveMessage, politeMessage } from "../support/announce"
 
 import { DeckHistory } from "../deck-history"
 import { formatError, provideDeckAssets, uploadable, type DeckAssetStore } from "../host"
+import { provideDeckThemes, withHostThemes } from "../themes"
 import { setDeckLocale, t } from "../i18n"
 import DeckContextMenu, { type DeckMenuEntry } from "./DeckContextMenu.vue"
 import DeckInspector from "./DeckInspector.vue"
@@ -78,6 +80,8 @@ const props = defineProps<{
   assets: DeckAssetStore
   /** The language the editor speaks, as a tag (`ja`, `zh-CN`); English otherwise. */
   locale?: string
+  /** Themes a deck may name besides the shipped two; one with a shipped theme's id replaces it. */
+  themes?: readonly DeckTheme[]
 }>()
 
 const emit = defineEmits<{ change: [] }>()
@@ -159,6 +163,8 @@ const stage = useTemplateRef<InstanceType<typeof DeckStage>>("stage")
 const root = useTemplateRef<HTMLElement>("root")
 
 const slide = computed<DeckSlide | undefined>(() => deck.value.slides[slideIndex.value])
+
+provideDeckThemes(() => withHostThemes(props.themes))
 
 provideDeckAssets({
   url: (src) => props.assets.url(src),
@@ -462,7 +468,8 @@ function placeAt(width: number, height: number) {
   return { left: px((DECK_WIDTH - width) / 2 + step), top: px((DECK_HEIGHT - height) / 2 + step) }
 }
 
-const ink = computed(() => deck.value.style.color ?? "#1d1d1f")
+// New text takes the deck's own colour, or its theme's.
+const ink = computed(() => deck.value.style.color ?? "var(--text)")
 
 /** Put nodes at the top of the slide's paint order, select them, and return where they went. */
 function insertNodes(nodes: readonly DeckNode[], key = "insert"): DeckPath[] {
@@ -521,7 +528,7 @@ function insertShape(kind: (typeof DECK_SHAPE_KINDS)[number]) {
         ...placeAt(width, height),
         width: px(width),
         height: px(height),
-        background: line ? ink.value : "#3b82f6",
+        background: line ? ink.value : "var(--accent)",
       },
       [],
       { kind },

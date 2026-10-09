@@ -1424,6 +1424,7 @@ defineExpose({
         <DeckSlideView
           :slide="slide"
           :deck-style="deck.style"
+          :theme="deck.theme"
           :resolve-asset="resolveAsset"
           :editing-path="editingPath"
           :caret-at="caretAt"

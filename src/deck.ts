@@ -1,3 +1,4 @@
+import { isDeckThemeId } from "./deck-themes"
 import { readDeckStyle, writeDeckStyle } from "./deck-css"
 import { decodeEntities, escapeAttribute, escapeText, tokenizeHtml, type HtmlAttribute } from "./deck-html"
 import { deckIconBody } from "./deck-icons"
@@ -105,6 +106,11 @@ export type Deck = {
   fontFaces: readonly DeckFontFace[]
   /** The defaults every slide inherits: its type and colour. */
   style: DeckStyle
+  /**
+   * The theme its `var(--<role>)` colours come from, by id; see
+   * `deck-themes.ts`. Absent, the first theme of whatever list draws it.
+   */
+  theme?: string
   slides: readonly DeckSlide[]
 }
 
@@ -487,12 +493,24 @@ export function readDeck(source: string): { deck: Deck; diagnostics: DeckDiagnos
     say(reader, stray, "warning", "Content outside a <section> is dropped: every slide is a <section>.")
   }
 
+  const theme = attribute(body, "data-theme")?.trim().toLowerCase()
+
+  if (theme !== undefined && !isDeckThemeId(theme)) {
+    say(
+      reader,
+      body,
+      "warning",
+      `data-theme="${theme}" is not a theme's id (lower case, digits and hyphens); the deck is drawn in the default theme.`,
+    )
+  }
+
   return {
     deck: {
       title: titleElement === undefined ? "" : textOf(titleElement).trim(),
       fontLinks,
       fontFaces,
       style: readStyle(reader, "body", body),
+      ...(theme !== undefined && isDeckThemeId(theme) ? { theme } : {}),
       slides,
     },
     diagnostics: reader.diagnostics,
@@ -1604,7 +1622,7 @@ export function writeDeck(deck: Deck): string {
     ...deck.fontLinks.map((href) => `<link rel="stylesheet" href="${escapeAttribute(href)}">`),
     ...(faces.length === 0 ? [] : [`<style>${faces.join("")}</style>`]),
     "</head>",
-    `<body${writeAttributes({}, deck.style)}>`,
+    `<body${writeAttributes(deck.theme === undefined ? {} : { "data-theme": deck.theme }, deck.style)}>`,
     ...deck.slides.map(writeSlide),
     "</body>",
     "</html>",

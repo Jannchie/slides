@@ -1,3 +1,4 @@
+import { DECK_THEME_ROLES, themeRoleOf, withoutThemeReferences } from "./deck-themes"
 /**
  * The styles a deck's elements may carry: every property, the values it
  * takes, and the elements it applies to.
@@ -306,6 +307,7 @@ export function isColor(text: string) {
   const value = text.trim().toLowerCase()
 
   return (
+    themeRoleOf(value) !== undefined ||
     /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.test(value) ||
     COLOR_FUNCTION.test(value) ||
     NAMED_COLORS.has(value)
@@ -315,11 +317,21 @@ export function isColor(text: string) {
 function color(text: string): Read {
   const value = text.trim()
 
-  if (/currentcolor|var\(/i.test(value)) {
-    return refuse("a colour written out: #hex, rgb(), hsl() or a name — not currentColor or var()")
+  if (/currentcolor/i.test(value) || /var\(/i.test(withoutThemeReferences(value))) {
+    return refuse(
+      `a colour written out — #hex, rgb(), hsl() or a name — or a theme colour, var(--${DECK_THEME_ROLES.join("), var(--")}); not currentColor or any other var()`,
+    )
   }
 
-  return isColor(value) ? ok(value.toLowerCase()) : refuse("a colour: #hex, rgb(), hsl() or a name")
+  const role = themeRoleOf(value)
+
+  // A theme colour is written one way, however it was spelled; any other
+  // colour as it came, so a deck that is read and written again is unchanged.
+  return role !== undefined
+    ? ok(`var(--${role})`)
+    : isColor(value)
+      ? ok(value.toLowerCase())
+      : refuse("a colour: #hex, rgb(), hsl(), a name, or a theme colour such as var(--accent)")
 }
 
 function angle(text: string) {
@@ -393,7 +405,9 @@ function background(text: string): Read {
   }
 
   if (isColor(value)) {
-    return ok(value.toLowerCase())
+    const role = themeRoleOf(value)
+
+    return ok(role === undefined ? value.toLowerCase() : `var(--${role})`)
   }
 
   // A gradient, optionally over a colour: `linear-gradient(…), #fff`. The
@@ -1009,8 +1023,12 @@ function readDeclaration(
 
   // A backslash is an escape to CSS — `\75rl(` is `url(` — and nothing in the
   // subset needs one, so a value holding one is not read past.
-  if (/var\(|url\(|expression\(|\\/i.test(value)) {
-    return { property, dropped: `${JSON.stringify(value)}: no var(), url(), expressions or escapes` }
+  // A theme colour is the one var() the subset reads; any other is dropped.
+  if (/var\(|url\(|expression\(|\\/i.test(withoutThemeReferences(value))) {
+    return {
+      property,
+      dropped: `${JSON.stringify(value)}: no url(), expressions or escapes, and no var() but a theme colour (var(--${DECK_THEME_ROLES.join("), var(--")}))`,
+    }
   }
 
   const result = spec.read(value)

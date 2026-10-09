@@ -8,6 +8,7 @@ import {
   splitTop,
   strokeOf,
   type Deck,
+  type DeckTheme,
   type DeckElement,
   type DeckNode,
   type DeckPath,
@@ -15,6 +16,7 @@ import {
 } from "../index"
 import { firstFamily, loadDeckFonts, measureDrawnBox, widenBox, type Box } from "../dom"
 
+import { provideDeckThemes, withHostThemes } from "./themes"
 import DeckSlideView from "./components/DeckSlideView"
 
 /**
@@ -61,6 +63,8 @@ export async function exportDeckPptx(
   deck: Deck,
   title: string,
   resolveAsset: (src: string) => string,
+  /** The host's themes, as the editor was given them, so a deck naming one exports in it. */
+  themes?: readonly DeckTheme[],
 ): Promise<DeckPptxExport> {
   const { default: PptxGenJS } = await import("pptxgenjs")
   const pptx = new PptxGenJS()
@@ -69,7 +73,7 @@ export async function exportDeckPptx(
   pptx.layout = "DECK"
   pptx.title = title
 
-  const mounted = await mountOffscreen(deck, resolveAsset)
+  const mounted = await mountOffscreen(deck, resolveAsset, themes)
   const skipped = new Set<string>()
 
   try {
@@ -145,7 +149,11 @@ async function waitForFaces(host: HTMLElement) {
   await document.fonts.ready
 }
 
-async function mountOffscreen(deck: Deck, resolveAsset: (src: string) => string) {
+async function mountOffscreen(
+  deck: Deck,
+  resolveAsset: (src: string) => string,
+  themes?: readonly DeckTheme[],
+) {
   // The faces the deck names, in this document: an export from the gallery
   // has no editor open to have loaded them.
   await loadDeckFonts(deck, resolveAsset)
@@ -167,12 +175,19 @@ async function mountOffscreen(deck: Deck, resolveAsset: (src: string) => string)
       "div",
       deck.slides.map((slide) =>
         h("div", { style: { width: `${DECK_WIDTH}px`, height: `${DECK_HEIGHT}px` } }, [
-          h(DeckSlideView, { slide, deckStyle: deck.style, resolveAsset, interactive: true }),
+          h(DeckSlideView, {
+            slide,
+            deckStyle: deck.style,
+            theme: deck.theme,
+            resolveAsset,
+            interactive: true,
+          }),
         ]),
       ),
     ),
   )
 
+  provideDeckThemes(() => withHostThemes(themes), app)
   app.mount(host)
   await nextTick()
   await waitForFaces(host)

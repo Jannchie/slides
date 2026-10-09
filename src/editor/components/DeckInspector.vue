@@ -8,6 +8,7 @@ import {
   deckStyleApplies,
   elementAt,
   editTable,
+  findDeckTheme,
   nodeAt,
   patchNodeStyle,
   patchStyle,
@@ -37,6 +38,7 @@ import { announce } from "../support/announce"
 
 import { formatError, uploadable, useDeckAssets } from "../host"
 import { t } from "../i18n"
+import { themeName, useDeckThemes } from "../themes"
 import DeckColorField from "./DeckColorField.vue"
 import DeckInspectorRow from "./DeckInspectorRow.vue"
 import DeckNumberField from "./DeckNumberField.vue"
@@ -132,10 +134,15 @@ type Field =
   | "table"
   | "rows"
   | "spacing"
+  | "theme"
 
 const label = (name: Field) => t(`deck.field.${name}`)
 
 const slide = computed(() => props.deck.slides[props.slideIndex])
+
+/** The themes this editor offers, and the one the deck is drawn in. */
+const themes = useDeckThemes()
+const theme = computed(() => findDeckTheme(props.deck.theme, themes()))
 
 type Styled = DeckElement | DeckSvg
 
@@ -239,6 +246,12 @@ function setDeck(next: Deck, key: string) {
   if (props.editable) {
     emit("commit", next, `deck:${key}`)
   }
+}
+
+/** Draw the deck in another theme: every colour that refers to a role follows. */
+function setTheme(id: string) {
+  setDeck({ ...props.deck, theme: id }, "theme")
+  emit("seal")
 }
 
 /** A number typed into a field, as pixels. */
@@ -927,6 +940,7 @@ function setHidden(event: Event) {
         </DeckInspectorRow>
         <DeckInspectorRow :label="label('color')">
           <DeckColorField
+            :theme="theme"
             :placeholder="unset"
             :value="common('color')"
             :label="label('color')"
@@ -1024,6 +1038,7 @@ function setHidden(event: Event) {
         </DeckInspectorRow>
         <DeckInspectorRow v-if="fillKind === 'solid'" :label="label('color')">
           <DeckColorField
+            :theme="theme"
             :placeholder="unset"
             :value="fill"
             :label="label('fill')"
@@ -1035,6 +1050,7 @@ function setHidden(event: Event) {
         <template v-else-if="gradient">
           <DeckInspectorRow :label="label('from')">
             <DeckColorField
+              :theme="theme"
               :placeholder="unset"
               :value="gradient.from"
               :label="label('from')"
@@ -1044,6 +1060,7 @@ function setHidden(event: Event) {
           </DeckInspectorRow>
           <DeckInspectorRow :label="label('to')">
             <DeckColorField
+              :theme="theme"
               :placeholder="unset"
               :value="gradient.to"
               :label="label('to')"
@@ -1109,6 +1126,7 @@ function setHidden(event: Event) {
         </DeckInspectorRow>
         <DeckInspectorRow :label="label('color')">
           <DeckColorField
+            :theme="theme"
             :placeholder="unset"
             :value="border?.color"
             :label="label('borderColor')"
@@ -1347,6 +1365,7 @@ function setHidden(event: Event) {
         </DeckInspectorRow>
         <DeckInspectorRow :label="label('color')">
           <DeckColorField
+            :theme="theme"
             :placeholder="unset"
             :value="common('color')"
             :label="label('color')"
@@ -1360,6 +1379,7 @@ function setHidden(event: Event) {
         <h3 class="slides-inspector-heading">{{ label("connector") }}</h3>
         <DeckInspectorRow :label="label('color')">
           <DeckColorField
+            :theme="theme"
             :placeholder="unset"
             :value="common('color')"
             :label="label('color')"
@@ -1485,6 +1505,7 @@ function setHidden(event: Event) {
         </DeckInspectorRow>
         <DeckInspectorRow :label="label('color')">
           <DeckColorField
+            :theme="theme"
             :placeholder="unset"
             v-if="slideFillKind === 'solid'"
             :value="slide.style.background"
@@ -1614,6 +1635,41 @@ function setHidden(event: Event) {
 
       <section class="slides-inspector-section">
         <h3 class="slides-inspector-heading">{{ label("deck") }}</h3>
+        <div class="slides-inspector-row !items-start">
+          <span class="slides-inspector-label leading-[var(--slides-control-height)]">{{
+            label("theme")
+          }}</span>
+          <div
+            class="slides-theme-picker min-w-0 grid grid-cols-2 gap-1.5"
+            role="radiogroup"
+            :aria-label="label('theme')"
+          >
+            <button
+              v-for="option in themes()"
+              :key="option.id"
+              type="button"
+              role="radio"
+              class="slides-theme-option min-w-0 flex flex-col gap-1 rounded-[var(--slides-radius)] p-1 text-left slides-focus slides-hover"
+              :class="option.id === theme.id ? 'ring-1.5 ring-slides-focus' : ''"
+              :aria-checked="option.id === theme.id"
+              :title="themeName(option)"
+              @click="setTheme(option.id)"
+            >
+              <span
+                class="relative h-10 w-full flex items-end gap-1 overflow-hidden rounded-[calc(var(--slides-radius)-2px)] px-1.5 pb-1 ring-1 ring-inset"
+                :style="{ background: option.colors.background, '--tw-ring-color': option.colors.line }"
+                aria-hidden="true"
+              >
+                <span class="text-sm font-semibold leading-none" :style="{ color: option.colors.text }"
+                  >Aa</span
+                >
+                <span class="mb-0.5 h-1 w-4 rounded-full" :style="{ background: option.colors.accent }" />
+                <span class="mb-0.5 h-1 w-3 rounded-full" :style="{ background: option.colors.muted }" />
+              </span>
+              <span class="truncate px-0.5 slides-ink-2">{{ themeName(option) }}</span>
+            </button>
+          </div>
+        </div>
         <DeckInspectorRow :label="label('font')">
           <select
             class="slides-field"
@@ -1629,6 +1685,7 @@ function setHidden(event: Event) {
         </DeckInspectorRow>
         <DeckInspectorRow :label="label('color')">
           <DeckColorField
+            :theme="theme"
             :placeholder="unset"
             :value="deck.style.color"
             :label="label('color')"

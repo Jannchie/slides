@@ -21,6 +21,24 @@ const normalized = writeDeck(deck) // the same tree always writes the same text
 
 `@jannchie/slides/dom` is the half that needs a document: measuring laid-out boxes, loading a deck's fonts, reading and writing a `contenteditable` run.
 
+## Themes
+
+A deck names a theme, `<body data-theme="minimal-dark">`, and its slides refer to the theme's colours by role: `color:var(--text)`, `background:var(--surface)`, `var(--accent)`. Change the theme and every slide follows; a colour written out stays as written. Two ship, Minimal white (`minimal-light`) and Minimal black (`minimal-dark`), and a host adds its own:
+
+```ts
+import { mountDeckEditor, type DeckTheme } from "@jannchie/slides/editor"
+
+const paper: DeckTheme = {
+  id: "paper",
+  name: "Paper",
+  colors: { background: "#f6f1e7", surface: "#ebe3d3", text: "#2b2620", muted: "#7a6f61", accent: "#b4472e", line: "#d8ccb6" },
+}
+
+mountDeckEditor(element, { source, assets, themes: [paper] })
+```
+
+A page that draws a deck outside the editor gives `deckRootStyle(deck.style, findDeckTheme(deck.theme, themes))` to the box its slides sit in, and `exportDeckPptx` takes the same list.
+
 ## The editor
 
 A canvas with selection and transforms, an inspector, a slide list, speaker notes, a presenter with a speaker console, and PPTX export. Written in Vue, usable three ways:
@@ -44,6 +62,7 @@ import { DeckEditor } from "@jannchie/slides/react"
 | `assets` | `{ url(src), upload(file) }`. A deck names its own files `assets/<name>`. `url` says where the browser fetches one; `upload` stores a picture or font file and answers with the `src` to name it by. The editor never uploads an SVG: it rasterizes it to a PNG first. |
 | `editable` | Defaults to `true`. A read-only editor still pages and presents. |
 | `locale` | A language tag. The editor ships English, Japanese and Simplified Chinese; anything else reads as English. |
+| `themes` | Themes a deck may name besides the shipped two. One with a shipped theme's id replaces it. |
 | `onChange` | The reader changed the deck. `write()` returns its text, which is exactly `source` while nothing has changed. |
 
 Saving, versions and conflicts belong to the host.

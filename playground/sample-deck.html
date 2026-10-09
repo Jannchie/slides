@@ -5,24 +5,25 @@
 <title>Playground deck</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap">
 </head>
-<body style="font-family:Inter, sans-serif;color:#1a1a1a">
-<section id="cover" data-transition="fade" style="background:#fbfbf8;padding:128px;display:flex;flex-direction:column;justify-content:center;gap:32px">
-<x-shape kind="ellipse" style="position:absolute;left:1480px;top:96px;width:320px;height:320px;background:#2563eb;opacity:0.12"></x-shape>
-<h1 style="font-size:120px;font-weight:700">Slides playground</h1>
-<p style="font-size:40px;color:#6a7179">What the format can say, on four slides</p>
-<aside>Open with what the deck is for.</aside>
+<body data-theme="minimal-light" style="font-family:Inter, sans-serif">
+<section id="cover" data-transition="fade" style="background:var(--background);padding:128px;display:flex;flex-direction:column;justify-content:center;gap:32px">
+<x-shape kind="ellipse" style="position:absolute;left:1480px;top:96px;width:320px;height:320px;background:var(--surface)"></x-shape>
+<h1 style="font-size:120px;font-weight:700;color:var(--text)">Slides playground</h1>
+<p style="font-size:40px;color:var(--muted)">What the format can say, on four slides</p>
+<hr style="width:160px;border-top:4px solid var(--accent)">
+<aside>Open with what the deck is for. Switch the theme under Deck to see every slide follow it.</aside>
 </section>
-<section id="points" data-transition="push" style="background:#ffffff;padding:128px;display:flex;flex-direction:column;gap:48px">
+<section id="points" data-transition="push" style="background:var(--background);color:var(--text);padding:128px;display:flex;flex-direction:column;gap:48px">
 <h2 style="font-size:72px;font-weight:600">Three points</h2>
 <ul style="font-size:40px;line-height:1.5">
 <li><b>Bold</b>, <i>italic</i>, <u>underline</u> and <s>struck</s> runs</li>
-<li>A <a href="https://github.com/jannchie/slides">link</a> and <span style="color:#2563eb">coloured</span> words</li>
+<li>A <a href="https://github.com/jannchie/slides">link</a> and <span style="color:var(--accent)">accented</span> words</li>
 <li>Double-click any text to edit it in place</li>
 </ul>
 <div style="display:flex;flex-direction:row;gap:32px;align-items:center">
-<x-icon name="chart-line" style="width:96px;height:96px;color:#2563eb"></x-icon>
-<x-icon name="calendar" style="width:96px;height:96px;color:#16a34a"></x-icon>
-<x-icon name="chat" style="width:96px;height:96px;color:#dc2626"></x-icon>
+<x-icon name="chart-line" style="width:96px;height:96px;color:var(--accent)"></x-icon>
+<x-icon name="calendar" style="width:96px;height:96px;color:var(--muted)"></x-icon>
+<x-icon name="chat" style="width:96px;height:96px;color:var(--muted)"></x-icon>
 </div>
 </section>
 <section id="shapes" style="background:#0f172a;color:#f8fafc;padding:128px">
@@ -31,15 +32,15 @@
 <x-shape kind="diamond" style="position:absolute;left:640px;top:400px;width:240px;height:240px;background:#f59e0b"></x-shape>
 <x-shape kind="arrow-right" style="position:absolute;left:960px;top:460px;width:320px;height:120px;background:#16a34a"></x-shape>
 <x-shape kind="triangle" style="position:absolute;left:1360px;top:400px;width:280px;height:240px;background:#dc2626"></x-shape>
-<p style="position:absolute;left:128px;top:760px;width:1200px;font-size:32px;color:#94a3b8">Drag, resize, rotate, align; Shift-click to select several.</p>
+<p style="position:absolute;left:128px;top:760px;width:1200px;font-size:32px;color:#94a3b8">This slide's colours are written out, so it keeps them in every theme.</p>
 </section>
-<section id="table" style="background:#ffffff;padding:128px;display:flex;flex-direction:column;gap:48px">
+<section id="table" style="background:var(--background);color:var(--text);padding:128px;display:flex;flex-direction:column;gap:48px">
 <h2 style="font-size:72px;font-weight:600">A table</h2>
 <table style="font-size:32px;width:1200px">
-<tr><th style="padding:16px;background:#f1f5f9">Quarter</th><th style="padding:16px;background:#f1f5f9">Revenue</th><th style="padding:16px;background:#f1f5f9">Growth</th></tr>
-<tr><td style="padding:16px">Q1</td><td style="padding:16px">$1.2M</td><td style="padding:16px">8%</td></tr>
-<tr><td style="padding:16px">Q2</td><td style="padding:16px">$1.4M</td><td style="padding:16px">17%</td></tr>
-<tr><td style="padding:16px">Q3</td><td style="padding:16px">$1.7M</td><td style="padding:16px">21%</td></tr>
+<tr><th style="padding:16px;background:var(--surface)">Quarter</th><th style="padding:16px;background:var(--surface)">Revenue</th><th style="padding:16px;background:var(--surface)">Growth</th></tr>
+<tr><td style="padding:16px;border-bottom:1px solid var(--line)">Q1</td><td style="padding:16px;border-bottom:1px solid var(--line)">$1.2M</td><td style="padding:16px;border-bottom:1px solid var(--line)">8%</td></tr>
+<tr><td style="padding:16px;border-bottom:1px solid var(--line)">Q2</td><td style="padding:16px;border-bottom:1px solid var(--line)">$1.4M</td><td style="padding:16px;border-bottom:1px solid var(--line);color:var(--accent)">17%</td></tr>
+<tr><td style="padding:16px;border-bottom:1px solid var(--line)">Q3</td><td style="padding:16px;border-bottom:1px solid var(--line)">$1.7M</td><td style="padding:16px;border-bottom:1px solid var(--line);color:var(--accent)">21%</td></tr>
 </table>
 <aside>End on the number that moved most.</aside>
 </section>

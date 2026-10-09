@@ -471,6 +471,7 @@ onBeforeUnmount(() => {
               v-if="deck.slides[leaving.index]"
               :slide="deck.slides[leaving.index]!"
               :deck-style="deck.style"
+              :theme="deck.theme"
               :resolve-asset="resolveAsset"
             />
           </div>
@@ -483,6 +484,7 @@ onBeforeUnmount(() => {
               v-if="current"
               :slide="current"
               :deck-style="deck.style"
+              :theme="deck.theme"
               :resolve-asset="resolveAsset"
             />
           </div>

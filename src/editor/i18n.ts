@@ -51,6 +51,11 @@ export function setDeckLocale(tag: string) {
   }
 }
 
+/** Whether the editor has words for `key`: for a key made from a value, such as a theme's id. */
+export function hasMessage(key: string): key is DeckMessageKey {
+  return key in enMessages
+}
+
 export function t(key: DeckMessageKey, params?: MessageParams): string {
   const message = dictionaries[deckLocale.value][key]
 

@@ -1,6 +1,8 @@
 import { defineComponent, h, onMounted, onUpdated, ref, type PropType, type VNode } from "vue"
 
 import {
+  deckThemeStyle,
+  findDeckTheme,
   nodeAt,
   pathKey,
   renderDeckNodes,
@@ -13,6 +15,7 @@ import {
 import { buildInlineDom, installDeckSheet, readInlineDom } from "../../dom"
 
 import { createCompositionGuard } from "../support/ime"
+import { useDeckThemes } from "../themes"
 
 /**
  * One slide, drawn: the stage, the thumbnails, the presenter and the export
@@ -35,6 +38,8 @@ export default defineComponent({
   props: {
     slide: { type: Object as PropType<DeckSlide>, required: true },
     deckStyle: { type: Object as PropType<DeckStyle>, default: () => ({}) },
+    /** The theme the deck names; its colours are what `var(--<role>)` reads. */
+    theme: { type: String, default: undefined },
     resolveAsset: { type: Function as PropType<(src: string) => string>, default: undefined },
     interactive: { type: Boolean, default: false },
     editingPath: { type: Array as PropType<DeckPath>, default: undefined },
@@ -49,6 +54,8 @@ export default defineComponent({
   },
   setup(props, { emit }) {
     installDeckSheet()
+
+    const themes = useDeckThemes()
 
     onMounted(() => emit("rendered"))
     onUpdated(() => emit("rendered"))
@@ -72,7 +79,15 @@ export default defineComponent({
 
       return h(
         "div",
-        { class: "deck-root", style: { ...props.deckStyle, width: "1920px", height: "1080px" } },
+        {
+          class: "deck-root",
+          style: {
+            ...deckThemeStyle(findDeckTheme(props.theme, themes())),
+            ...props.deckStyle,
+            width: "1920px",
+            height: "1080px",
+          },
+        },
         [
           h(
             "section",

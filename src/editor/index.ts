@@ -1,9 +1,11 @@
 import { createApp, h, ref, shallowReactive } from "vue"
 
 import DeckEditor from "./components/DeckEditor.vue"
+import type { DeckTheme } from "../index"
 import type { DeckAssetStore } from "./host"
 
 export type { DeckAssetStore } from "./host"
+export { DECK_THEMES, MINIMAL_DARK, MINIMAL_LIGHT, type DeckTheme } from "../index"
 export { deckLocales, setDeckLocale, type DeckLocale } from "./i18n"
 
 export type DeckEditorOptions = {
@@ -16,6 +18,8 @@ export type DeckEditorOptions = {
   locale?: string
   /** The reader changed the deck; `write()` answers with its text. */
   onChange?: () => void
+  /** Themes a deck may name besides the shipped two; one with a shipped theme's id replaces it. */
+  themes?: readonly DeckTheme[]
 }
 
 export type DeckEditorHandle = {
@@ -49,6 +53,7 @@ export function mountDeckEditor(element: HTMLElement, options: DeckEditorOptions
         editable: state.editable,
         assets: state.assets,
         locale: state.locale,
+        themes: state.themes,
         onChange: () => state.onChange?.(),
       }),
   })

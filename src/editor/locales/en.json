@@ -202,5 +202,15 @@
   "deck.zoom.in": "Zoom in",
   "deck.zoom.out": "Zoom out",
   "deck.zoom.fit": "Fit to window",
-  "deck.zoom.actual": "Actual size"
+  "deck.zoom.actual": "Actual size",
+  "deck.field.theme": "Theme",
+  "deck.field.themeColors": "Theme colours",
+  "deck.theme.minimal-light": "Minimal white",
+  "deck.theme.minimal-dark": "Minimal black",
+  "deck.role.background": "Background",
+  "deck.role.surface": "Surface",
+  "deck.role.text": "Text",
+  "deck.role.muted": "Muted text",
+  "deck.role.accent": "Accent",
+  "deck.role.line": "Line"
 }

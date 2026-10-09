@@ -2,7 +2,7 @@
 import { usePreferredDark } from "@vueuse/core"
 import { computed, onBeforeUnmount, ref, watch } from "vue"
 
-import { DeckEditor, type DeckAssetStore } from "../src/editor/vue"
+import { DeckEditor, type DeckAssetStore, type DeckTheme } from "../src/editor/vue"
 import sample from "./sample-deck.html?raw"
 
 /**
@@ -14,7 +14,8 @@ import sample from "./sample-deck.html?raw"
  * working on the editor comes back to where it was. Pictures are object URLs
  * and do not survive a reload: a playground has no server to keep them.
  */
-const DECK_KEY = "slides-playground:deck"
+// Bumped when the sample changes, so a stored deck from before does not hide it.
+const DECK_KEY = "slides-playground:deck:2"
 const PREFERENCES_KEY = "slides-playground:preferences"
 
 function stored(key: string): string | null {
@@ -77,6 +78,24 @@ watch(scheme, (value) => (document.documentElement.dataset.scheme = value), { im
 const source = ref(stored(DECK_KEY) ?? sample)
 const written = ref(source.value)
 const editor = ref<InstanceType<typeof DeckEditor> | null>(null)
+
+/**
+ * A theme of the playground's own, the way any host adds one: offered beside
+ * the shipped two, and named by a deck like they are.
+ */
+const PAPER: DeckTheme = {
+  id: "paper",
+  name: "Paper",
+  colors: {
+    background: "#f6f1e7",
+    surface: "#ebe3d3",
+    text: "#2b2620",
+    muted: "#7a6f61",
+    accent: "#b4472e",
+    line: "#d8ccb6",
+  },
+}
+const themes = [PAPER]
 
 const files = new Map<string, string>()
 let uploaded = 0
@@ -185,6 +204,7 @@ function reset() {
         :editable="preferences.editable"
         :assets="assets"
         :locale="preferences.locale"
+        :themes="themes"
         @change="onChange"
       />
       <aside v-if="preferences.showSource" class="source">

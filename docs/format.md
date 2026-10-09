@@ -33,3 +33,11 @@ Anything outside the subset is **dropped on read, with a diagnostic**. The model
 A model writes HTML and CSS fluently and a bespoke schema badly. A closed subset of HTML keeps that fluency while giving the same guarantee a schema would: the parser turns the document into a typed tree (`Deck`), and everything downstream — the page, the editor, the exports — reads the tree, never the text. An edit by exact passage keeps working on the text, and the diff the model is shown after a reader's edit is a diff of HTML it can read.
 
 ## Why a fixed canvas and real CSS layout
+
+## Themes
+
+A deck may name a theme on its body, `<body data-theme="minimal-dark">`, and refer to the theme's colours by role anywhere a colour is taken: `color:var(--text)`, `background:var(--surface)`, `border:1px solid var(--line)`, a gradient stop. The roles are a closed set — `background`, `surface`, `text`, `muted`, `accent`, `line` — and they are the only `var()` the subset reads. Changing the theme changes every colour that refers to a role; a colour written out stays as written.
+
+Two themes ship: `minimal-light` (Minimal white) and `minimal-dark` (Minimal black). A host adds its own by giving the editor, and whatever draws its pages, a longer list (`themes`); a host theme with a shipped theme's id replaces it. A deck naming no theme, or one the reader does not have, is drawn in the first theme of the list.
+
+Unthemed slides default to the theme too: a section with no `background` takes `var(--background)`, text with no `color` takes `var(--text)`.

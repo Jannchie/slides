@@ -99,7 +99,14 @@ export default defineComponent({
                     transform: `scale(${boxWidth / DECK_WIDTH})`,
                   },
                 },
-                [h(DeckSlideView, { slide, deckStyle: props.deck.style, resolveAsset: props.resolveAsset })],
+                [
+                  h(DeckSlideView, {
+                    slide,
+                    deckStyle: props.deck.style,
+                    theme: props.deck.theme,
+                    resolveAsset: props.resolveAsset,
+                  }),
+                ],
               ),
             ],
       )

@@ -202,5 +202,15 @@
   "deck.zoom.in": "放大",
   "deck.zoom.out": "缩小",
   "deck.zoom.fit": "适应窗口",
-  "deck.zoom.actual": "实际大小"
+  "deck.zoom.actual": "实际大小",
+  "deck.field.theme": "主题",
+  "deck.field.themeColors": "主题色",
+  "deck.theme.minimal-light": "极简白",
+  "deck.theme.minimal-dark": "极简黑",
+  "deck.role.background": "背景",
+  "deck.role.surface": "卡片",
+  "deck.role.text": "文字",
+  "deck.role.muted": "次要文字",
+  "deck.role.accent": "强调",
+  "deck.role.line": "线条"
 }

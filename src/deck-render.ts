@@ -1,3 +1,4 @@
+import { MINIMAL_LIGHT, deckThemeStyle, type DeckTheme } from "./deck-themes"
 import { readPixels } from "./deck-css"
 import { escapeAttribute, escapeText } from "./deck-html"
 import { deckIconMarkup } from "./deck-icons"
@@ -70,8 +71,8 @@ export type DeckRenderOptions = {
  * otherwise turn an ellipse on a slide into a rounded square.
  */
 export const DECK_BASE_CSS = `
-.deck-root{font-family:system-ui,-apple-system,"Segoe UI","Noto Sans","PingFang SC","Hiragino Sans",sans-serif;color:#1d1d1f;color-scheme:light}
-.deck-slide{position:relative;width:${DECK_WIDTH}px;height:${DECK_HEIGHT}px;overflow:hidden;display:flex;flex-direction:column;background:#ffffff;font-size:32px;line-height:1.4;overflow-wrap:break-word;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.deck-root{font-family:system-ui,-apple-system,"Segoe UI","Noto Sans","PingFang SC","Hiragino Sans",sans-serif;color:var(--text,#1d1d1f);color-scheme:light}
+.deck-slide{position:relative;width:${DECK_WIDTH}px;height:${DECK_HEIGHT}px;overflow:hidden;display:flex;flex-direction:column;background:var(--background,#ffffff);font-size:32px;line-height:1.4;overflow-wrap:break-word;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 .deck-slide,.deck-slide *{margin:0;box-sizing:border-box;corner-shape:round}
 .deck-slide div{display:flex;flex-direction:column;min-width:0}
 .deck-slide h1{font-size:96px;font-weight:600;line-height:1.1}
@@ -544,7 +545,12 @@ export function deckFontMarkup(deck: Deck, resolveAsset: (src: string) => string
   ].join("\n")
 }
 
-/** The deck's defaults as the style of the element its slides sit in. */
-export function deckRootStyle(style: DeckStyle) {
-  return styleText({ ...style })
+/**
+ * The deck's defaults as the style of the element its slides sit in: its
+ * theme's colours, as the custom properties a slide's `var(--<role>)` reads,
+ * then its own type and colour. `theme` is the one the deck names, found in
+ * whatever list the page offers; left out, the first shipped theme.
+ */
+export function deckRootStyle(style: DeckStyle, theme: DeckTheme = MINIMAL_LIGHT) {
+  return styleText({ ...deckThemeStyle(theme), ...style })
 }
