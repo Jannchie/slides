@@ -276,3 +276,175 @@ export function element(
 export function text(value: string): DeckNode {
   return { type: "text", text: value }
 }
+
+// ---------------------------------------------------------------------------
+// Tables
+// ---------------------------------------------------------------------------
+
+/**
+ * The table a path is in, and the cell it is in when it is in one: from the
+ * table's own path, a row's, a cell's or anything typed inside a cell.
+ */
+export function tableAt(
+  nodes: readonly DeckNode[],
+  path: DeckPath,
+): { table: DeckPath; row?: number; column?: number } | undefined {
+  for (let length = path.length; length > 0; length--) {
+    const candidate = path.slice(0, length)
+
+    if (elementAt(nodes, candidate)?.tag === "table") {
+      return { table: candidate, row: path[length], column: path[length + 1] }
+    }
+  }
+
+  return undefined
+}
+
+const isRow = (node: DeckNode): node is DeckElement => node.type === "element" && node.tag === "tr"
+const isCell = (node: DeckNode): node is DeckElement =>
+  node.type === "element" && (node.tag === "td" || node.tag === "th")
+const isHeaderRow = (row: DeckElement) =>
+  row.children.some(isCell) && row.children.filter(isCell).every((cell) => cell.tag === "th")
+
+/** An empty cell shaped like `like`: its tag and style, none of its words or its id. */
+function emptyCell(like: DeckElement, tag: "td" | "th" = like.tag as "td" | "th"): DeckElement {
+  const { id: _id, ...attributes } = like.attributes
+
+  return element(tag, like.style, [], attributes)
+}
+
+/**
+ * A table with an empty row put in at `at`, its cells shaped like the body
+ * row nearest it — a row added under the header is a body row, not a second
+ * header.
+ */
+export function insertTableRow(table: DeckElement, at: number): DeckElement {
+  const rows = table.children
+  const index = Math.max(0, Math.min(at, rows.length))
+  const near = [rows[index], rows[index - 1], ...rows].filter(
+    (node): node is DeckElement => node !== undefined && isRow(node),
+  )
+  const template = near.find((row) => !isHeaderRow(row)) ?? near[0]
+
+  if (template === undefined) {
+    return table
+  }
+
+  const header = isHeaderRow(template)
+  const { id: _id, ...attributes } = template.attributes
+  const row = element(
+    "tr",
+    template.style,
+    template.children
+      .filter(isCell)
+      .map((cell) => emptyCell(cell, header ? "td" : (cell.tag as "td" | "th"))),
+    attributes,
+  )
+
+  return { ...table, children: [...rows.slice(0, index), row, ...rows.slice(index)] }
+}
+
+/** A table with an empty column put in at `at` in every row, each cell shaped like its row's neighbour. */
+export function insertTableColumn(table: DeckElement, at: number): DeckElement {
+  return {
+    ...table,
+    children: table.children.map((row) => {
+      if (!isRow(row)) {
+        return row
+      }
+
+      const index = Math.max(0, Math.min(at, row.children.length))
+      const template = [row.children[index - 1], row.children[index], ...row.children].find(
+        (node): node is DeckElement => node !== undefined && isCell(node),
+      )
+
+      return template === undefined
+        ? row
+        : {
+            ...row,
+            children: [...row.children.slice(0, index), emptyCell(template), ...row.children.slice(index)],
+          }
+    }),
+  }
+}
+
+/** A table without its row at `index`; a table's last row is not taken. */
+export function removeTableRow(table: DeckElement, index: number): DeckElement {
+  return table.children.filter(isRow).length <= 1
+    ? table
+    : { ...table, children: table.children.filter((_, at) => at !== index) }
+}
+
+/** A table without the cell at `index` in each row; a table's last column is not taken. */
+export function removeTableColumn(table: DeckElement, index: number): DeckElement {
+  const columns = Math.max(
+    0,
+    ...table.children.filter(isRow).map((row) => row.children.filter(isCell).length),
+  )
+
+  return columns <= 1
+    ? table
+    : {
+        ...table,
+        children: table.children.map((row) =>
+          isRow(row) ? { ...row, children: row.children.filter((_, at) => at !== index) } : row,
+        ),
+      }
+}
+
+export const TABLE_EDITS = [
+  "rowAbove",
+  "rowBelow",
+  "columnLeft",
+  "columnRight",
+  "removeRow",
+  "removeColumn",
+] as const
+export type TableEdit = (typeof TABLE_EDITS)[number]
+
+/**
+ * One edit to the table at or around `path`, and what should be selected
+ * after it: the cell that was, where it has moved to, or the table when the
+ * cell is gone. From the table itself, the edit works at its last row or
+ * column. Nothing when `path` is in no table, or the edit would take its last
+ * row or column.
+ */
+export function editTable(
+  nodes: readonly DeckNode[],
+  path: DeckPath,
+  edit: TableEdit,
+): { nodes: DeckNode[]; selection: DeckPath } | undefined {
+  const found = tableAt(nodes, path)
+  const table = found === undefined ? undefined : elementAt(nodes, found.table)
+
+  if (found === undefined || table === undefined) {
+    return undefined
+  }
+
+  const rows = table.children.filter(isRow)
+  const lastRow = rows.length - 1
+  const lastColumn = Math.max(0, ...rows.map((row) => row.children.filter(isCell).length)) - 1
+  const row = found.row ?? lastRow
+  const column = found.column ?? lastColumn
+  const change: Record<TableEdit, () => [DeckElement, number, number] | undefined> = {
+    rowAbove: () => [insertTableRow(table, row), 1, 0],
+    rowBelow: () => [insertTableRow(table, row + 1), 0, 0],
+    columnLeft: () => [insertTableColumn(table, column), 0, 1],
+    columnRight: () => [insertTableColumn(table, column + 1), 0, 0],
+    removeRow: () => (lastRow < 1 ? undefined : [removeTableRow(table, row), Number.NaN, 0]),
+    removeColumn: () => (lastColumn < 1 ? undefined : [removeTableColumn(table, column), 0, Number.NaN]),
+  }
+  const result = change[edit]()
+
+  if (result === undefined) {
+    return undefined
+  }
+
+  const [next, down, right] = result
+  const stays = found.row !== undefined && found.column !== undefined && !Number.isNaN(down + right)
+
+  return {
+    nodes: updateAt(nodes, found.table, () => next),
+    selection: stays ? [...found.table, found.row! + down, found.column! + right] : found.table,
+  }
+}
