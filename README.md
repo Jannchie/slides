@@ -52,10 +52,42 @@ The editor speaks its own status to screen readers, and its presenter is a real 
 
 ## Styles
 
-- **A host that runs UnoCSS** spreads `deckEditorShortcuts`, `deckEditorColors` and `deckEditorPreflights` from `@jannchie/slides/uno` into its own config, passes `deckEditorIcons` to `presetIcons` (which needs `@jannchie/iconify-json` installed), and scans `node_modules/@jannchie/slides/dist/*.js` for the editor's classes. The editor's `field` or `popover` then has one definition on the page.
-- **Anywhere else**, load `@jannchie/slides/style.css`. It contains the editor's classes and a reset kept to the editor's own boxes (`.slides-editor`), so it draws the same on a page with any reset or none, and leaves the rest of that page alone.
+Load `@jannchie/slides/style.css`, or, in a host that runs UnoCSS, spread `deckEditorShortcuts`, `deckEditorColors` and `deckEditorPreflights` from `@jannchie/slides/uno` into its config, pass `deckEditorIcons` to `presetIcons` (which needs `@jannchie/iconify-json`), and scan `node_modules/@jannchie/slides/dist/*.js` for the editor's classes.
 
-Dark mode follows `data-scheme="dark"` on the editor's box or any ancestor of it.
+Overriding it is meant to be easy, at three depths:
+
+```css
+/* 1. Tokens: every colour, radius, face and size the editor draws with. */
+.slides-editor {
+  --slides-accent: #7c3aed;
+  --slides-radius: 4px;
+  --slides-control-height: 32px;
+  --slides-font-sans: "IBM Plex Sans", sans-serif;
+}
+[data-scheme="dark"] .slides-editor {
+  --slides-bg: #0b1020;
+}
+
+/* 2. Parts: each kind of control and each region has a class of its own. */
+.slides-inspector-label { text-transform: uppercase; }
+
+/* 3. Anything: the built sheet is in `@layer slides`, so a rule outside a layer wins. */
+.slides-toolbar button { color: hotpink; }
+```
+
+| tokens | |
+| --- | --- |
+| colours | `--slides-bg` `--slides-panel` `--slides-sunken` `--slides-field` `--slides-stage` `--slides-line` `--slides-line-strong` `--slides-text` `--slides-text-2` `--slides-muted` `--slides-accent` `--slides-hover` `--slides-pressed` `--slides-focus` `--slides-selection` `--slides-warning` `--slides-danger` |
+| shape | `--slides-radius` `--slides-radius-lg` `--slides-control-height` `--slides-shadow` |
+| type | `--slides-font-sans` `--slides-font-mono` `--slides-font-size` |
+
+| parts | |
+| --- | --- |
+| regions | `slides-editor` (the root, the presenter and every menu) `slides-toolbar` `slides-slide-list` `slides-stage-area` `slides-notes` `slides-inspector` `slides-context-menu` |
+| controls | `slides-field` `slides-field-box` `slides-number-field` `slides-color-field` `slides-button` `slides-icon-button` `slides-tool` `slides-segmented` `slides-segment` `slides-segment-on` `slides-popover` `slides-menu-item` `slides-label` |
+| format pane | `slides-inspector-section` `slides-inspector-heading` `slides-inspector-row` `slides-inspector-label` `slides-inspector-controls` |
+
+The defaults sit inside `:where()`, so they weigh nothing, and the reset that comes with them touches only the editor's own boxes. Dark mode follows `data-scheme="dark"` on the editor's box or any ancestor of it.
 
 ## What is left as an import
 
