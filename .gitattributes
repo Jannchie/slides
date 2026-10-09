@@ -1,0 +1,4 @@
+# Checked out as LF on every machine regardless of core.autocrlf: bash
+# rejects a `set -o pipefail` line that ends in CR, and oxfmt flags every
+# CRLF file.
+* text=auto eol=lf

@@ -1,0 +1,20 @@
+{
+  "rules": {
+    "typescript/no-explicit-any": "error",
+    "no-restricted-globals": [
+      "error",
+      "status",
+      "name",
+      "length",
+      "event",
+      "location",
+      "top",
+      "self",
+      "close",
+      "closed",
+      "origin",
+      "parent",
+      "history"
+    ]
+  }
+}
