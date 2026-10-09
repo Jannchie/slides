@@ -63,4 +63,5 @@ jobs:
         run: pnpm pack --pack-destination dist-pack
 
       - name: Publish
-        run: npm publish dist-pack/*.tgz --access public
+        # `./` because npm reads a bare `dir/file.tgz` as a GitHub repository.
+        run: npm publish ./dist-pack/*.tgz --access public
