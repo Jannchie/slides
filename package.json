@@ -68,7 +68,7 @@
   "scripts": {
     "dev": "vite --config playground/vite.config.ts",
     "build": "vite build && vue-tsc -p tsconfig.build.json",
-    "prepublishOnly": "pnpm build",
+    "prepack": "pnpm build",
     "test": "vitest run",
     "typecheck": "vue-tsc --noEmit",
     "lint": "oxlint --deny-warnings",

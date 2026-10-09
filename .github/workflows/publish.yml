@@ -1,0 +1,66 @@
+# Publishes @jannchie/slides to npm as a trusted publisher (OIDC): no token is
+# stored anywhere. npm exchanges this workflow's OIDC token for a short-lived
+# credential, which is why `id-token: write` is required, and why a publish can
+# only come from this workflow in this repository. Provenance is attached.
+#
+# The trust is set once, after the first publish:
+#   npm trust github @jannchie/slides --file publish.yml --repo jannchie/slides --allow-publish
+#
+# Release flow:
+#   1. bump "version" in package.json and commit
+#   2. git tag v0.2.0 && git push origin v0.2.0
+
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - name: Use an npm that supports trusted publishing
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: Check the tag against package.json
+        run: |
+          set -euo pipefail
+          tagged="${GITHUB_REF_NAME#v}"
+          declared="$(node -p "require('./package.json').version")"
+          # A tag that disagrees with package.json would publish a version nobody
+          # tagged; fail here rather than after the registry has it.
+          if [ "$tagged" != "$declared" ]; then
+            echo "tag says $tagged but package.json says $declared"
+            exit 1
+          fi
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
+      # Packed by pnpm, which swaps `exports` for `publishConfig.exports` (the
+      # built files); published by npm, which is what speaks trusted publishing.
+      - name: Pack
+        run: pnpm pack --pack-destination dist-pack
+
+      - name: Publish
+        run: npm publish dist-pack/*.tgz --access public
