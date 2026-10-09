@@ -1,25 +1,95 @@
 /**
- * The classes the deck editor is written in, as UnoCSS shortcuts and theme
- * colours. A host builds them into its own stylesheet (the web app spreads
- * these into its config), or loads the stylesheet the package builds with
- * them. Defined here and only here, so the editor's `field` or `popover` reads
- * the same in every host and the web app's never drifts from it.
+ * How the editor looks, in three layers a host can each reach:
  *
- * Dark variants assume the host's preset says what dark is (`dark:`); the web
- * app writes it to `<html data-scheme>`.
+ * - **Tokens** (`--slides-*`): every colour, radius, face and size the editor
+ *   draws with, as custom properties on `.slides-editor`. Their defaults sit
+ *   inside `:where()`, so a host's `.slides-editor { --slides-accent: … }`
+ *   wins without a fight, and a theme is a handful of declarations.
+ * - **Named parts** (`slides-field`, `slides-button`, `slides-inspector`…):
+ *   the shortcuts below are real classes in the DOM, so a host can reach a
+ *   kind of control, or a region, by a name that will not change under it.
+ * - **A cascade layer**: the built stylesheet is inside `@layer slides`, so any
+ *   rule a host writes outside a layer wins over it whatever its weight.
+ *
+ * A host that runs UnoCSS spreads these into its own config, and the editor's
+ * names are all prefixed `slides-` so they never meet the host's own.
+ */
+
+const LIGHT = {
+  bg: "#fbfbfc",
+  panel: "#ffffff",
+  sunken: "#f3f3f5",
+  field: "#ffffff",
+  stage: "#f0f0f2",
+  line: "#e6e6ea",
+  "line-strong": "#d4d4da",
+  text: "#0e0e11",
+  "text-2": "#4a4b53",
+  muted: "#6e6f78",
+  warning: "#a16207",
+  danger: "#dc2626",
+}
+
+const DARK = {
+  bg: "#09090b",
+  panel: "#0e0e11",
+  sunken: "#141418",
+  field: "#0e0e11",
+  stage: "#050506",
+  line: "#1d1d22",
+  "line-strong": "#2a2a31",
+  text: "#f2f2f4",
+  "text-2": "#c2c3ca",
+  muted: "#9a9ba4",
+  warning: "#facc15",
+  danger: "#f87171",
+}
+
+const declare = (colors: Record<string, string>) =>
+  Object.entries(colors)
+    .map(([name, value]) => `--slides-${name}:${value};`)
+    .join("")
+
+/**
+ * The tokens. Light on `.slides-editor`; dark wherever `data-scheme="dark"`
+ * says so, on the editor's box or any ancestor. Everything not a colour is the
+ * same in both.
+ */
+const TOKENS = [
+  `:where(.slides-editor){${declare(LIGHT)}`,
+  // No colour for an accent: the accent is the ink, and a pressed or hovered
+  // control is a faint wash of it.
+  "--slides-accent:var(--slides-text);",
+  "--slides-hover:color-mix(in srgb,var(--slides-text) 6%,transparent);",
+  "--slides-pressed:color-mix(in srgb,var(--slides-text) 10%,transparent);",
+  "--slides-focus:var(--slides-text);",
+  // The one colour that is a colour: what is selected on a slide has to read
+  // against whatever the slide is painted, which ink alone does not.
+  "--slides-selection:#2563eb;",
+  "--slides-font-sans:Inter,system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;",
+  "--slides-font-mono:'Berkeley Mono',ui-monospace,'Sarasa Mono SC',Consolas,monospace;",
+  "--slides-font-size:12px;",
+  "--slides-radius:6px;",
+  "--slides-radius-lg:8px;",
+  "--slides-control-height:28px;",
+  "--slides-shadow:0 8px 24px rgb(0 0 0 / .12),0 0 0 1px var(--slides-line);",
+  "font-family:var(--slides-font-sans);color:var(--slides-text);color-scheme:light}",
+  `:where([data-scheme="dark"]) :where(.slides-editor),:where(.slides-editor[data-scheme="dark"]){${declare(DARK)}`,
+  "--slides-shadow:0 8px 24px rgb(0 0 0 / .5),0 0 0 1px var(--slides-line);color-scheme:dark}",
+].join("")
+
+/**
+ * The editor's colours as theme colours, each one its token: `bg-slides-panel`,
+ * `border-slides-line`, `text-slides-muted`. A host's value for the token is
+ * what every class reads.
  */
 export const deckEditorColors = {
-  // The dark theme's grounds, a black with a little blue in it rather than a
-  // neutral one: the page, then what is raised off it (dialogs). One hue
-  // for every dark surface, so none of them reads as grey beside another.
-  ground: "oklch(0.155 0.014 262)",
-  "ground-raised": "oklch(0.2 0.016 262)",
-  // Secondary text on those grounds: what `ink-muted` and `ink-soft` are in
-  // the dark, named once so the next contrast pass is one edit.
-  "ink-dim": "oklch(0.84 0 0)",
-  // Dark-mode floating surfaces: composer, bubbles, menus, and their hover.
-  elevated: "oklch(0.235 0.016 262)",
-  "elevated-hover": "oklch(0.265 0.017 262)",
+  slides: Object.fromEntries(
+    [...Object.keys(LIGHT), "accent", "hover", "pressed", "focus", "selection"].map((name) => [
+      name,
+      `var(--slides-${name})`,
+    ]),
+  ),
 }
 
 /**
@@ -49,110 +119,86 @@ const OWN = ":where(.slides-editor, .slides-editor *)"
 const SCOPE = `${OWN},${OWN}::before,${OWN}::after`
 const IN = (selectors: string) => `:where(.slides-editor) :where(${selectors})`
 
-export const deckEditorPreflights = [
-  {
-    getCSS: () =>
-      [
-        `${SCOPE}{box-sizing:border-box;margin:0;padding:0;border:0 solid}`,
-        `${IN("h1,h2,h3,h4,h5,h6")}{font-size:inherit;font-weight:inherit}`,
-        `${IN("ol,ul,menu")}{list-style:none}`,
-        `${IN("a")}{color:inherit;text-decoration:inherit}`,
-        `${IN("b,strong")}{font-weight:bolder}`,
-        `${IN("img,svg,video,canvas,iframe")}{display:block;vertical-align:middle}`,
-        `${IN("img,video")}{max-width:100%;height:auto}`,
-        `${IN("table")}{text-indent:0;border-color:inherit;border-collapse:collapse}`,
-        `${IN("button,input,select,optgroup,textarea")}{font:inherit;font-feature-settings:inherit;letter-spacing:inherit;color:inherit;border-radius:0;background-color:transparent;opacity:1}`,
-        `${IN("button,input[type=button],input[type=reset],input[type=submit]")}{appearance:button}`,
-        `${IN("textarea")}{resize:vertical}`,
-        `${OWN}::placeholder{opacity:1;color:color-mix(in oklab,currentColor 50%,transparent)}`,
-        `${IN("[hidden]:not([hidden=until-found])")}{display:none!important}`,
-      ].join("\n"),
-  },
-]
+const RESET = [
+  `${SCOPE}{box-sizing:border-box;margin:0;padding:0;border:0 solid}`,
+  `${IN("h1,h2,h3,h4,h5,h6")}{font-size:inherit;font-weight:inherit}`,
+  `${IN("ol,ul,menu")}{list-style:none}`,
+  `${IN("a")}{color:inherit;text-decoration:inherit}`,
+  `${IN("b,strong")}{font-weight:bolder}`,
+  `${IN("img,svg,video,canvas,iframe")}{display:block;vertical-align:middle}`,
+  `${IN("img,video")}{max-width:100%;height:auto}`,
+  `${IN("table")}{text-indent:0;border-color:inherit;border-collapse:collapse}`,
+  `${IN("button,input,select,optgroup,textarea")}{font:inherit;font-feature-settings:inherit;letter-spacing:inherit;color:inherit;border-radius:0;background-color:transparent;opacity:1}`,
+  `${IN("button,input[type=button],input[type=reset],input[type=submit]")}{appearance:button}`,
+  `${IN("button,select,summary,[role=button]")}{cursor:pointer}`,
+  `${IN("textarea")}{resize:vertical}`,
+  // A figure is typed or stepped with the arrow keys; the spinner beside it is
+  // a target too small to hit at a control's height.
+  `${IN("input[type=number]")}{appearance:textfield}`,
+  `${OWN}::-webkit-inner-spin-button,${OWN}::-webkit-outer-spin-button{appearance:none;margin:0}`,
+  `${IN("input[type=range]")}{accent-color:var(--slides-accent)}`,
+  `${IN("input[type=checkbox]")}{accent-color:var(--slides-accent)}`,
+  `${OWN}::placeholder{opacity:1;color:var(--slides-muted)}`,
+  `${IN("[hidden]:not([hidden=until-found])")}{display:none!important}`,
+].join("\n")
 
+/** The tokens, then the reset: both on the editor's own boxes and nowhere else. */
+export const deckEditorPreflights = [{ layer: "preflights", getCSS: () => `${TOKENS}\n${RESET}` }]
+
+/**
+ * The editor's parts. Each name is a class a host can reach; each reads only
+ * tokens, so a theme reaches all of them at once.
+ */
 export const deckEditorShortcuts = {
-  surface: "bg-black/4 dark:bg-white/5",
-  "surface-hover": "hover:bg-black/6 dark:hover:bg-white/8",
-  "surface-strong": "bg-black/6 dark:bg-white/8",
-  // Text inks that clear WCAG AAA (7:1) on the page grounds — neutral-50
-  // light, the blue-black `ground` dark. Type the name, not a shade, so the next
-  // contrast pass is one edit here rather than a sweep of call sites.
-  // Icons are non-text and only need 3:1, so they may sit a step brighter.
-  "ink-muted": "text-neutral-600 dark:text-ink-dim",
-  // The two rungs an activity row is written in. `ink-strong` is what the row
-  // is about — the word it opens with. `ink-soft` is everything it says about
-  // that: the detail, the summary, the producer it names.
-  //
-  // A row's leading icon wears whichever of the two the text beside it does,
-  // which is the rule these names exist to make keepable: the icon and its
-  // words used to be two literals that agreed by accident, so darkening one
-  // left the other behind and the icon read as switched off rather than as
-  // quiet. `ink-soft` is a step lighter than `ink-muted` in light mode and the
-  // same shade in dark — it sits on a row's tinted ground, not on the page,
-  // and it is not body copy.
-  "ink-strong": "text-neutral-700 dark:text-neutral-200",
-  "ink-soft": "text-neutral-500 dark:text-ink-dim",
-  "ink-warning": "text-amber-900 dark:text-amber-400",
-  "ink-accent": "text-blue-800 dark:text-blue-400",
-  // One focus treatment for every keyboard-reachable control. focus-visible
-  // only, so mouse clicks stay quiet while Tab always shows where it landed.
-  //
-  // Named `kbd-` and not `focus-` on purpose: UnoCSS reads a class beginning
-  // with a variant prefix as that variant, so `focus-ring` resolved as
-  // `focus:` + `ring` — a 1px shadow, and no `outline-none` — and the
-  // browser's own outline was what every control had been showing. A
-  // shortcut whose name starts with a variant's is a shortcut that never
-  // runs, silently.
-  //
-  // Solid, and a step darker on the light ground than on the dark one: the
-  // ring is a non-text indicator, which WCAG holds to 3:1 against what it
-  // sits on — blue-500 at 70% came to about 2.6:1 on neutral-50.
-  "kbd-ring":
-    "outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-1 focus-visible:outline-blue-600 dark:focus-visible:outline-blue-400",
-  // The same treatment for a field that is already its own visible box.
-  // Flush against its edge rather than offset outside it: the offset that
-  // separates a ring from a button reads, around a box that has its own
-  // fill, as a second box drawn around the first.
-  "kbd-ring-flush":
-    "outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-blue-600 dark:focus-visible:outline-blue-400",
-  // The one transition the app uses. 150ms everywhere, so motion reads as
-  // one system instead of per-component timings.
-  "transition-quick": "transition-all duration-150",
-  // Every floating panel: dropdown menus, the slash menu, the workspace
-  // switcher. One surface, one ring, one z — they must not each pick their own.
-  popover:
-    "z-50 rounded-xl bg-neutral-50 p-1 shadow-xl ring-1 ring-black/10 dark:bg-elevated dark:ring-white/10",
-  // A text field, a select, the trigger of a field-like menu: a box with an
-  // edge. A fill alone read as a label someone had shaded, not as a place to
-  // type.
-  field:
-    "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm placeholder:text-neutral-400 kbd-ring-flush dark:border-neutral-700 dark:bg-ground dark:placeholder:text-neutral-500",
-  // The quiet button beside a field or under a list — the one that is not the
-  // point of the page. Outlined so it reads as a button before it is hovered.
-  "button-secondary":
-    "flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm surface-hover kbd-ring disabled:opacity-50 dark:border-neutral-700",
-  // One choice of a few, all visible: language, theme, a request shape. The
-  // track is the ground; the chosen segment is lifted out of it. The ink is
-  // the call site's, one of `segment-selected` or `ink-muted`: a colour here
-  // would meet the selected one's and win or lose by generation order.
-  segmented: "inline-flex flex-wrap gap-0.5 rounded-lg p-0.5 surface",
-  segment: "flex items-center gap-1.5 rounded-md px-3 py-1 text-sm kbd-ring transition-quick",
-  "segment-selected": "bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-neutral-50",
-  // A row inside a popover.
-  "menu-item":
-    "w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm surface-hover kbd-ring",
-  // The chevron every fold in the app ends with; the icon class sits beside
-  // it at the call site so the glyph stays greppable.
-  "fold-chevron": "h-3.5 w-3.5 shrink-0 ink-muted transition-transform duration-150",
-  // Every figure that moves: a duration, a count of chars or files, a token
-  // total, a cost. Digits of one width, so a reading that ticks up neither
-  // shifts what is beside it nor widens the line it is on — and the code
-  // face, because a figure usually shares its line with one. One class rather
-  // than `font-num` beside `tabular-nums` at each call site: a figure that
-  // remembers one and forgets the other is the failure this exists to not
-  // have.
-  num: "font-num tabular-nums",
-  // Every icon-only control in the app.
-  "icon-button":
-    "h-8 w-8 flex items-center justify-center rounded-md ink-soft surface-hover kbd-ring transition-quick",
+  // Keyboard focus: one treatment, shown only for the keyboard.
+  "slides-focus":
+    "outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-slides-focus focus-visible:outline-offset-1",
+  "slides-hover": "hover:bg-slides-hover",
+  "slides-pressed": "bg-slides-pressed text-slides-text",
+  // The inks: what a thing is about, what is said about it, and what is quiet.
+  "slides-ink": "text-slides-text",
+  "slides-ink-2": "text-slides-text-2",
+  "slides-muted": "text-slides-muted",
+  "slides-warning": "text-slides-warning",
+  // Figures and code: one width of digit, in the code face.
+  "slides-num": "[font-family:var(--slides-font-mono)] tabular-nums",
+  // A small heading over a group: the code face, set small and wide.
+  "slides-label":
+    "[font-family:var(--slides-font-mono)] text-[11px] leading-4 uppercase tracking-[.06em] text-slides-muted",
+
+  // Every control is one height, so a row of them lines up whatever they are.
+  "slides-field":
+    "h-[var(--slides-control-height)] w-full min-w-0 rounded-[var(--slides-radius)] border border-slides-line bg-slides-field px-2 text-[length:var(--slides-font-size)] text-slides-text hover:border-slides-line-strong focus-visible:border-slides-text-2 outline-none disabled:opacity-50",
+  // A field with something before it inside its edge: a letter, an icon, a swatch.
+  "slides-field-box":
+    "h-[var(--slides-control-height)] w-full min-w-0 flex items-center gap-1.5 rounded-[var(--slides-radius)] border border-slides-line bg-slides-field px-2 text-[length:var(--slides-font-size)] text-slides-text hover:border-slides-line-strong focus-within:border-slides-text-2",
+  "slides-button":
+    "h-[var(--slides-control-height)] inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-[var(--slides-radius)] border border-slides-line bg-slides-field px-2 text-[length:var(--slides-font-size)] text-slides-text slides-hover slides-focus disabled:pointer-events-none disabled:opacity-40",
+  // A toolbar's control with words or a chevron beside its icon.
+  "slides-tool":
+    "h-[var(--slides-control-height)] inline-flex shrink-0 items-center gap-1 rounded-[var(--slides-radius)] px-1.5 text-[length:var(--slides-font-size)] text-slides-text-2 hover:text-slides-text slides-hover slides-focus disabled:pointer-events-none disabled:opacity-35",
+  "slides-icon-button":
+    "h-[var(--slides-control-height)] w-[var(--slides-control-height)] inline-flex shrink-0 items-center justify-center rounded-[var(--slides-radius)] text-slides-text-2 hover:text-slides-text slides-hover slides-focus disabled:pointer-events-none disabled:opacity-35",
+  // One choice of a few, all visible: a hairline round the group, and the
+  // chosen one a wash of ink rather than a fill.
+  "slides-segmented":
+    "h-[var(--slides-control-height)] w-full flex gap-0.5 rounded-[var(--slides-radius-lg)] border border-slides-line p-0.5",
+  "slides-segment":
+    "min-w-0 flex-1 inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-[calc(var(--slides-radius)-1px)] px-1.5 text-[length:var(--slides-font-size)] text-slides-text-2 hover:text-slides-text slides-focus",
+  "slides-segment-on": "bg-slides-pressed !text-slides-text",
+  // A floating panel, and a row inside one.
+  "slides-popover":
+    "z-50 rounded-[var(--slides-radius-lg)] bg-slides-panel p-1 text-[length:var(--slides-font-size)] text-slides-text shadow-[var(--slides-shadow)]",
+  "slides-menu-item":
+    "h-[var(--slides-control-height)] w-full flex items-center gap-2 rounded-[var(--slides-radius)] px-2 text-left text-[length:var(--slides-font-size)] slides-hover slides-focus disabled:pointer-events-none disabled:opacity-40",
+  // The format pane: sections of rows, each row a label and its controls, so
+  // every control in it starts on one line and is one height.
+  "slides-inspector-section": "flex flex-col gap-2 border-b border-slides-line px-3 py-3",
+  "slides-inspector-heading": "slides-label",
+  "slides-inspector-row":
+    "grid min-h-[var(--slides-control-height)] grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2",
+  "slides-inspector-label": "truncate text-slides-text-2",
+  "slides-inspector-controls": "min-w-0 flex items-center gap-1.5",
+  "slides-chevron": "h-3.5 w-3.5 shrink-0 text-slides-muted transition-transform duration-150",
+  "slides-transition": "transition-all duration-150",
 }

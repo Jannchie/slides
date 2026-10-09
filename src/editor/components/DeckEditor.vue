@@ -16,10 +16,12 @@ import {
   DECK_ICON_NAMES,
   DECK_SHAPE_KINDS,
   DECK_WIDTH,
+  TABLE_EDITS,
   childrenAt,
   deckIconMarkup,
   deckNodesText,
   deckSlideTitle,
+  editTable,
   element,
   elementAt,
   insertAt,
@@ -31,6 +33,7 @@ import {
   readDeckNodes,
   removeAt,
   samePath,
+  tableAt,
   text,
   uniqueId,
   updateAt,
@@ -42,6 +45,7 @@ import {
   type DeckNode,
   type DeckPath,
   type DeckSlide,
+  type TableEdit,
 } from "../../index"
 import { loadDeckFonts, px, readInlineDom, type DeckAlignment, type Point } from "../../dom"
 
@@ -50,6 +54,7 @@ import { announce, assertiveMessage, politeMessage } from "../support/announce"
 import { DeckHistory } from "../deck-history"
 import { formatError, provideDeckAssets, uploadable, type DeckAssetStore } from "../host"
 import { setDeckLocale, t } from "../i18n"
+import DeckContextMenu, { type DeckMenuEntry } from "./DeckContextMenu.vue"
 import DeckInspector from "./DeckInspector.vue"
 import DeckMenu from "./DeckMenu.vue"
 import DeckPresenter from "./DeckPresenter.vue"
@@ -218,6 +223,12 @@ function step(take: () => EditorSelection | undefined) {
 function select(paths: DeckPath[], nextScope: DeckPath) {
   selection.value = paths
   scope.value = nextScope
+}
+
+/** A change made from the format pane moved what was selected: leave the text, and follow it. */
+function selectFromInspector(paths: DeckPath[]) {
+  finishEditing()
+  select(paths, paths[0] === undefined ? [] : parentOf(paths[0]))
 }
 
 // ---------------------------------------------------------------------------
@@ -539,7 +550,7 @@ function insertTable() {
 
 const imageInput = useTemplateRef<HTMLInputElement>("imageInput")
 
-async function insertImages(files: readonly File[]) {
+async function insertImages(files: readonly File[], at?: Point) {
   // Uploaded together, inserted in the order they were given.
   const uploaded = await Promise.all(
     files
@@ -558,7 +569,7 @@ async function insertImages(files: readonly File[]) {
       }),
   )
 
-  for (const image of uploaded) {
+  for (const [index, image] of uploaded.entries()) {
     if (image === undefined) {
       continue
     }
@@ -574,7 +585,7 @@ async function insertImages(files: readonly File[]) {
         "img",
         {
           position: "absolute",
-          ...placeAt(width, height),
+          ...(at === undefined ? placeAt(width, height) : centredAt(at, width, height, index)),
           width: px(width),
           height: px(height),
           "object-fit": "cover",
@@ -584,6 +595,58 @@ async function insertImages(files: readonly File[]) {
       ),
     ])
   }
+}
+
+/** A box centred on where something was dropped, kept on the slide, a step apart from the one before. */
+function centredAt(at: Point, width: number, height: number, index: number) {
+  const step = index * 32
+  const left = Math.min(Math.max(at.x - width / 2 + step, 0), DECK_WIDTH - width)
+  const top = Math.min(Math.max(at.y - height / 2 + step, 0), DECK_HEIGHT - height)
+
+  return { left: px(Math.round(left)), top: px(Math.round(top)) }
+}
+
+// ---------------------------------------------------------------------------
+// Pictures dropped on the stage
+// ---------------------------------------------------------------------------
+
+/** Pictures are being dragged over the stage, and will be put where they are let go. */
+const dropping = ref(false)
+
+function carriesImages(event: DragEvent) {
+  return [...(event.dataTransfer?.items ?? [])].some(
+    (item) => item.kind === "file" && item.type.startsWith("image/"),
+  )
+}
+
+function onDragOver(event: DragEvent) {
+  if (!props.editable || !carriesImages(event)) {
+    return
+  }
+
+  event.preventDefault()
+  event.dataTransfer!.dropEffect = "copy"
+  dropping.value = true
+}
+
+function onDragLeave(event: DragEvent) {
+  // Leaving the stage for something inside it is not leaving.
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) {
+    dropping.value = false
+  }
+}
+
+function onDrop(event: DragEvent) {
+  dropping.value = false
+
+  const files = [...(event.dataTransfer?.files ?? [])].filter((file) => file.type.startsWith("image/"))
+
+  if (!props.editable || files.length === 0) {
+    return
+  }
+
+  event.preventDefault()
+  void insertImages(files, stage.value?.slidePoint(event.clientX, event.clientY))
 }
 
 function imageSize(file: File): Promise<{ width: number; height: number }> {
@@ -802,6 +865,11 @@ function onPaste(event: ClipboardEvent) {
   }
 
   event.preventDefault()
+  pasteText(pasted)
+}
+
+/** Text pasted onto the slide: the subset's HTML as the elements it is, anything else as a paragraph. */
+function pasteText(pasted: string) {
   pasteCount += 1
 
   const nodes = /^\s*</.test(pasted)
@@ -824,6 +892,207 @@ function onPaste(event: ClipboardEvent) {
     insertNodes(offsetCopies(nodes, 32 * pasteCount), "paste")
   }
 }
+
+// ---------------------------------------------------------------------------
+// The right-click menu
+// ---------------------------------------------------------------------------
+
+const menu = shallowRef<{ x: number; y: number; entries: DeckMenuEntry[] }>()
+
+/** Everything at the level being worked in. */
+function selectAll() {
+  const children = slide.value === undefined ? [] : childrenAt(slide.value.children, scope.value)
+
+  select(
+    children.flatMap((node, index) => (node.type === "text" ? [] : [[...scope.value, index]])),
+    scope.value,
+  )
+}
+
+/** The modifier as the reader's platform writes it. */
+const MOD = /mac|iphone|ipad/i.test(globalThis.navigator?.platform ?? "") ? "⌘" : "Ctrl+"
+const SHIFT = MOD === "⌘" ? "⇧" : "Shift+"
+
+/** Copy without a clipboard event, for the menu: the same text a copy writes. */
+async function copySelection(cut: boolean) {
+  const nodes = selectedNodes()
+
+  if (nodes.length === 0) {
+    return
+  }
+
+  try {
+    await navigator.clipboard.writeText(writeDeckNodes(nodes))
+    pasteCount = 0
+
+    if (cut) {
+      removeSelection()
+    }
+  } catch (error) {
+    announce(t("deck.menu.clipboardFailed", { error: formatError(error) }), { assertive: true })
+  }
+}
+
+/** Paste without a clipboard event, for the menu: pictures first, then text. */
+async function pasteFromClipboard() {
+  try {
+    const items = typeof navigator.clipboard.read === "function" ? await navigator.clipboard.read() : []
+    const images = await Promise.all(
+      items.flatMap((item) =>
+        item.types
+          .filter((type) => type.startsWith("image/"))
+          .slice(0, 1)
+          .map(
+            async (type) => new File([await item.getType(type)], `pasted.${type.split("/")[1]}`, { type }),
+          ),
+      ),
+    )
+
+    if (images.length > 0) {
+      await insertImages(images)
+      return
+    }
+
+    const pasted = await navigator.clipboard.readText()
+
+    if (pasted.trim() !== "") {
+      pasteText(pasted)
+    }
+  } catch (error) {
+    announce(t("deck.menu.clipboardFailed", { error: formatError(error) }), { assertive: true })
+  }
+}
+
+function editTableAt(path: DeckPath, edit: TableEdit) {
+  const current = slide.value
+  const result = current === undefined ? undefined : editTable(current.children, path, edit)
+
+  if (result !== undefined) {
+    commit(
+      updateSlideChildren(deck.value, slideIndex.value, () => result.nodes),
+      "table",
+    )
+    history.seal()
+    select([result.selection], parentOf(result.selection))
+  }
+}
+
+function slideEntries(index: number): DeckMenuEntry[] {
+  const hidden = deck.value.slides[index]?.hidden === true
+
+  return [
+    { label: t("deck.slide.add"), icon: "i-jannchie-plus", run: addSlide },
+    { label: t("deck.slide.duplicate"), icon: "i-jannchie-copy", run: () => duplicateSlide(index) },
+    {
+      label: t(hidden ? "deck.slide.show" : "deck.slide.hide"),
+      icon: hidden ? "i-jannchie-eye" : "i-jannchie-eye-off",
+      run: () => toggleHidden(index),
+    },
+    "separator",
+    {
+      label: t("deck.slide.delete"),
+      icon: "i-jannchie-trash",
+      danger: true,
+      disabled: deck.value.slides.length <= 1,
+      run: () => removeSlide(index),
+    },
+  ]
+}
+
+function openStageMenu(at: { x: number; y: number }, under: DeckPath | undefined) {
+  if (!props.editable) {
+    return
+  }
+
+  const current = slide.value
+  const cell = under !== undefined && current !== undefined ? tableAt(current.children, under) : undefined
+  const tableEntries: DeckMenuEntry[] =
+    cell === undefined || under === undefined
+      ? []
+      : [
+          "separator",
+          ...TABLE_EDITS.map((edit) => ({
+            label: t(`deck.table.${edit}`),
+            icon: edit.startsWith("remove") ? "i-jannchie-trash" : "i-jannchie-plus",
+            danger: edit.startsWith("remove"),
+            run: () => editTableAt(under, edit),
+          })),
+        ]
+
+  menu.value = {
+    ...at,
+    entries:
+      selection.value.length === 0
+        ? [
+            {
+              label: t("deck.menu.paste"),
+              icon: "i-jannchie-clipboard",
+              keys: `${MOD}V`,
+              run: pasteFromClipboard,
+            },
+            { label: t("deck.menu.selectAll"), keys: `${MOD}A`, run: selectAll },
+            "separator",
+            ...slideEntries(slideIndex.value),
+          ]
+        : [
+            {
+              label: t("deck.menu.cut"),
+              icon: "i-jannchie-scissors",
+              keys: `${MOD}X`,
+              run: () => copySelection(true),
+            },
+            {
+              label: t("deck.menu.copy"),
+              icon: "i-jannchie-copy",
+              keys: `${MOD}C`,
+              run: () => copySelection(false),
+            },
+            {
+              label: t("deck.menu.paste"),
+              icon: "i-jannchie-clipboard",
+              keys: `${MOD}V`,
+              run: pasteFromClipboard,
+            },
+            { label: t("deck.duplicate"), keys: `${MOD}D`, run: duplicateSelection },
+            "separator",
+            { label: t("deck.arrange.front"), keys: `${MOD}${SHIFT}]`, run: () => reorder("front") },
+            { label: t("deck.arrange.forward"), keys: `${MOD}]`, run: () => reorder("forward") },
+            { label: t("deck.arrange.backward"), keys: `${MOD}[`, run: () => reorder("backward") },
+            { label: t("deck.arrange.back"), keys: `${MOD}${SHIFT}[`, run: () => reorder("back") },
+            "separator",
+            {
+              label: t("deck.arrange.group"),
+              keys: `${MOD}G`,
+              disabled: selection.value.length < 2,
+              run: groupSelection,
+            },
+            {
+              label: t("deck.arrange.ungroup"),
+              keys: `${MOD}${SHIFT}G`,
+              disabled: !canUngroup.value,
+              run: ungroupSelection,
+            },
+            ...tableEntries,
+            "separator",
+            {
+              label: t("deck.delete"),
+              icon: "i-jannchie-trash",
+              keys: "Del",
+              danger: true,
+              run: removeSelection,
+            },
+          ],
+  }
+}
+
+function openSlideMenu(index: number, at: { x: number; y: number }) {
+  if (props.editable) {
+    menu.value = { ...at, entries: slideEntries(index) }
+  }
+}
+
+/** The scheme the editor is drawn in, for the menu teleported out of it. */
+const scheme = computed(() => root.value?.closest<HTMLElement>("[data-scheme]")?.dataset.scheme)
 
 // ---------------------------------------------------------------------------
 // Keys
@@ -883,13 +1152,7 @@ function onKeydown(event: KeyboardEvent) {
 
   if (mod && key === "a") {
     event.preventDefault()
-
-    const children = slide.value === undefined ? [] : childrenAt(slide.value.children, scope.value)
-
-    select(
-      children.flatMap((node, index) => (node.type === "text" ? [] : [[...scope.value, index]])),
-      scope.value,
-    )
+    selectAll()
     return
   }
 
@@ -1114,14 +1377,14 @@ const hasSelection = computed(() => selection.value.length > 0)
 <template>
   <div
     ref="root"
-    class="slides-editor flex h-full min-h-0 flex-col outline-none"
+    class="slides-editor flex h-full min-h-0 flex-col bg-slides-bg text-[length:var(--slides-font-size)] text-slides-text outline-none"
     tabindex="-1"
     @keydown="onKeydown"
     @keyup="onKeyup"
   >
     <!-- The toolbar: inserting, then formatting, then arranging. -->
     <div
-      class="flex flex-wrap items-center gap-0.5 border-b border-black/8 px-2 py-1 dark:border-white/8"
+      class="slides-toolbar flex flex-wrap items-center gap-0.5 border-b border-slides-line bg-slides-panel px-2 py-1"
       role="toolbar"
       :aria-label="t('deck.toolbar')"
     >
@@ -1132,7 +1395,7 @@ const hasSelection = computed(() => selection.value.length > 0)
         ]"
         :key="action.id"
         type="button"
-        class="h-7 w-7 flex items-center justify-center rounded-md surface-hover kbd-ring disabled:opacity-35"
+        class="slides-icon-button disabled:opacity-35"
         :title="t(`deck.action.${action.id}`)"
         :aria-label="t(`deck.action.${action.id}`)"
         :disabled="!editable || action.disabled"
@@ -1142,14 +1405,14 @@ const hasSelection = computed(() => selection.value.length > 0)
         <i :class="action.icon" class="h-4 w-4" aria-hidden="true" />
       </button>
 
-      <span class="mx-1 h-4 w-px bg-black/10 dark:bg-white/10" aria-hidden="true" />
+      <span class="mx-1 h-4 w-px bg-slides-line" aria-hidden="true" />
 
       <template v-if="editable">
         <button
           v-for="kind in ['text', 'heading', 'list'] as const"
           :key="kind"
           type="button"
-          class="h-7 w-7 flex items-center justify-center rounded-md surface-hover kbd-ring"
+          class="slides-icon-button"
           :title="t(`deck.insert.${kind}`)"
           :aria-label="t(`deck.insert.${kind}`)"
           @mousedown.prevent
@@ -1175,7 +1438,7 @@ const hasSelection = computed(() => selection.value.length > 0)
                 v-for="kind in DECK_SHAPE_KINDS"
                 :key="kind"
                 type="button"
-                class="h-10 w-10 flex items-center justify-center rounded-md surface-hover kbd-ring"
+                class="h-10 w-10 flex items-center justify-center rounded-md slides-hover slides-focus"
                 :title="t(`deck.shape.${kind}`)"
                 :aria-label="t(`deck.shape.${kind}`)"
                 @click="
@@ -1185,7 +1448,7 @@ const hasSelection = computed(() => selection.value.length > 0)
                   }
                 "
               >
-                <svg viewBox="0 0 100 100" class="h-6 w-6 fill-current ink-strong" aria-hidden="true">
+                <svg viewBox="0 0 100 100" class="h-6 w-6 fill-current slides-ink" aria-hidden="true">
                   <rect v-if="kind === 'rect'" x="8" y="22" width="84" height="56" />
                   <rect v-else-if="kind === 'rounded'" x="8" y="22" width="84" height="56" rx="16" />
                   <ellipse v-else-if="kind === 'ellipse'" cx="50" cy="50" rx="42" ry="32" />
@@ -1222,7 +1485,7 @@ const hasSelection = computed(() => selection.value.length > 0)
             <div class="w-72 p-1">
               <input
                 v-model="iconQuery"
-                class="field mb-1 !py-1"
+                class="slides-field mb-1 !py-1"
                 :placeholder="t('deck.iconSearch')"
                 :aria-label="t('deck.iconSearch')"
               />
@@ -1231,7 +1494,7 @@ const hasSelection = computed(() => selection.value.length > 0)
                   v-for="name in icons"
                   :key="name"
                   type="button"
-                  class="h-8 w-8 flex items-center justify-center rounded-md surface-hover kbd-ring"
+                  class="h-8 w-8 flex items-center justify-center rounded-md slides-hover slides-focus"
                   :title="name"
                   :aria-label="name"
                   @click="
@@ -1254,7 +1517,7 @@ const hasSelection = computed(() => selection.value.length > 0)
 
         <button
           type="button"
-          class="h-7 w-7 flex items-center justify-center rounded-md surface-hover kbd-ring"
+          class="slides-icon-button"
           :title="t('deck.insert.image')"
           :aria-label="t('deck.insert.image')"
           @mousedown.prevent
@@ -1278,7 +1541,7 @@ const hasSelection = computed(() => selection.value.length > 0)
           ]"
           :key="action.id"
           type="button"
-          class="h-7 w-7 flex items-center justify-center rounded-md surface-hover kbd-ring"
+          class="slides-icon-button"
           :title="t(`deck.insert.${action.id}`)"
           :aria-label="t(`deck.insert.${action.id}`)"
           @mousedown.prevent
@@ -1287,7 +1550,7 @@ const hasSelection = computed(() => selection.value.length > 0)
           <i :class="action.icon" class="h-4 w-4" aria-hidden="true" />
         </button>
 
-        <span class="mx-1 h-4 w-px bg-black/10 dark:bg-white/10" aria-hidden="true" />
+        <span class="mx-1 h-4 w-px bg-slides-line" aria-hidden="true" />
 
         <button
           v-for="mark in [
@@ -1298,7 +1561,7 @@ const hasSelection = computed(() => selection.value.length > 0)
           ] as const"
           :key="mark.id"
           type="button"
-          class="h-7 w-7 flex items-center justify-center rounded-md surface-hover kbd-ring disabled:opacity-35"
+          class="slides-icon-button disabled:opacity-35"
           :title="t(mark.label)"
           :aria-label="t(mark.label)"
           :disabled="!hasSelection"
@@ -1309,7 +1572,7 @@ const hasSelection = computed(() => selection.value.length > 0)
         </button>
         <button
           type="button"
-          class="h-7 w-7 flex items-center justify-center rounded-md surface-hover kbd-ring disabled:opacity-35"
+          class="slides-icon-button disabled:opacity-35"
           :title="t('deck.action.link')"
           :aria-label="t('deck.action.link')"
           :disabled="editingPath === undefined"
@@ -1319,7 +1582,7 @@ const hasSelection = computed(() => selection.value.length > 0)
           <i class="i-jannchie-link h-4 w-4" aria-hidden="true" />
         </button>
 
-        <span class="mx-1 h-4 w-px bg-black/10 dark:bg-white/10" aria-hidden="true" />
+        <span class="mx-1 h-4 w-px bg-slides-line" aria-hidden="true" />
 
         <DeckMenu icon="i-jannchie-align-center-both" :label="t('deck.arrange')" :disabled="!hasSelection">
           <template #default="{ close }">
@@ -1328,7 +1591,7 @@ const hasSelection = computed(() => selection.value.length > 0)
                 v-for="how in ['forward', 'backward', 'front', 'back'] as const"
                 :key="how"
                 type="button"
-                class="menu-item"
+                class="slides-menu-item"
                 @click="
                   () => {
                     reorder(how)
@@ -1345,18 +1608,18 @@ const hasSelection = computed(() => selection.value.length > 0)
                       back: 'i-jannchie-arrange-send-to-back',
                     }[how]
                   "
-                  class="h-4 w-4 ink-muted"
+                  class="h-4 w-4 slides-ink-2"
                   aria-hidden="true"
                 />
                 {{ t(`deck.arrange.${how}`) }}
               </button>
-              <hr class="my-1 border-black/8 dark:border-white/8" />
+              <hr class="my-1 border-slides-line" />
               <div class="grid grid-cols-6 gap-0.5 px-1">
                 <button
                   v-for="how in ['left', 'centre', 'right', 'top', 'middle', 'bottom'] as const"
                   :key="how"
                   type="button"
-                  class="h-8 w-8 flex items-center justify-center rounded-md surface-hover kbd-ring"
+                  class="h-8 w-8 flex items-center justify-center rounded-md slides-hover slides-focus"
                   :title="t(`deck.align.${how}`)"
                   :aria-label="t(`deck.align.${how}`)"
                   @click="alignSelection(how)"
@@ -1381,7 +1644,7 @@ const hasSelection = computed(() => selection.value.length > 0)
                 v-for="axis in ['x', 'y'] as const"
                 :key="axis"
                 type="button"
-                class="menu-item"
+                class="slides-menu-item"
                 :disabled="selection.length < 3"
                 @click="
                   () => {
@@ -1394,15 +1657,15 @@ const hasSelection = computed(() => selection.value.length > 0)
                   :class="
                     axis === 'x' ? 'i-jannchie-distribute-horizontal' : 'i-jannchie-distribute-vertical'
                   "
-                  class="h-4 w-4 ink-muted"
+                  class="h-4 w-4 slides-ink-2"
                   aria-hidden="true"
                 />
                 {{ t(`deck.distribute.${axis}`) }}
               </button>
-              <hr class="my-1 border-black/8 dark:border-white/8" />
+              <hr class="my-1 border-slides-line" />
               <button
                 type="button"
-                class="menu-item"
+                class="slides-menu-item"
                 :disabled="selection.length < 2"
                 @click="
                   () => {
@@ -1411,12 +1674,12 @@ const hasSelection = computed(() => selection.value.length > 0)
                   }
                 "
               >
-                <i class="i-jannchie-group h-4 w-4 ink-muted" aria-hidden="true" />
+                <i class="i-jannchie-group h-4 w-4 slides-ink-2" aria-hidden="true" />
                 {{ t("deck.arrange.group") }}
               </button>
               <button
                 type="button"
-                class="menu-item"
+                class="slides-menu-item"
                 :disabled="!canUngroup"
                 @click="
                   () => {
@@ -1425,7 +1688,7 @@ const hasSelection = computed(() => selection.value.length > 0)
                   }
                 "
               >
-                <i class="i-jannchie-ungroup h-4 w-4 ink-muted" aria-hidden="true" />
+                <i class="i-jannchie-ungroup h-4 w-4 slides-ink-2" aria-hidden="true" />
                 {{ t("deck.arrange.ungroup") }}
               </button>
             </div>
@@ -1439,7 +1702,7 @@ const hasSelection = computed(() => selection.value.length > 0)
           ]"
           :key="action.id"
           type="button"
-          class="h-7 w-7 flex items-center justify-center rounded-md surface-hover kbd-ring disabled:opacity-35"
+          class="slides-icon-button disabled:opacity-35"
           :title="t(`deck.${action.id}`)"
           :aria-label="t(`deck.${action.id}`)"
           :disabled="!hasSelection"
@@ -1452,18 +1715,13 @@ const hasSelection = computed(() => selection.value.length > 0)
 
       <span class="flex-1" />
 
-      <button
-        type="button"
-        class="h-7 flex items-center gap-1 rounded-md px-1.5 text-xs surface-hover kbd-ring"
-        :title="t('deck.present')"
-        @click="presenting = 'present'"
-      >
-        <i class="i-jannchie-play h-4 w-4 ink-accent" aria-hidden="true" />
+      <button type="button" class="slides-tool" :title="t('deck.present')" @click="presenting = 'present'">
+        <i class="i-jannchie-play h-4 w-4 slides-ink" aria-hidden="true" />
         {{ t("deck.present") }}
       </button>
       <button
         type="button"
-        class="h-7 w-7 flex items-center justify-center rounded-md surface-hover kbd-ring"
+        class="slides-icon-button"
         :title="t('deck.presenterView')"
         :aria-label="t('deck.presenterView')"
         @click="presenting = 'presenter'"
@@ -1472,8 +1730,8 @@ const hasSelection = computed(() => selection.value.length > 0)
       </button>
       <button
         type="button"
-        class="h-7 w-7 flex items-center justify-center rounded-md surface-hover kbd-ring"
-        :class="{ 'surface-strong': inspectorOpen }"
+        class="slides-icon-button"
+        :class="{ 'slides-pressed': inspectorOpen }"
         :title="t('deck.inspector')"
         :aria-label="t('deck.inspector')"
         :aria-pressed="inspectorOpen"
@@ -1485,7 +1743,7 @@ const hasSelection = computed(() => selection.value.length > 0)
 
     <div class="min-h-0 flex flex-1">
       <DeckSlideList
-        class="w-40 shrink-0 border-r border-black/8 dark:border-white/8"
+        class="slides-slide-list w-40 shrink-0 border-r border-slides-line bg-slides-bg"
         :deck="deck"
         :slide-index="slideIndex"
         :editable="editable"
@@ -1496,9 +1754,26 @@ const hasSelection = computed(() => selection.value.length > 0)
         @remove="removeSlide"
         @move="moveSlide"
         @toggle-hidden="toggleHidden"
+        @menu="openSlideMenu"
       />
 
-      <div class="min-w-0 flex flex-1 flex-col bg-neutral-100 dark:bg-black/30">
+      <div
+        class="slides-stage-area relative min-w-0 flex flex-1 flex-col bg-slides-stage"
+        @dragenter="onDragOver"
+        @dragover="onDragOver"
+        @dragleave="onDragLeave"
+        @drop="onDrop"
+      >
+        <div
+          v-if="dropping"
+          class="slides-drop pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-[var(--slides-radius-lg)] border-2 border-dashed border-slides-selection bg-slides-selection/6"
+          aria-hidden="true"
+        >
+          <span class="slides-popover flex items-center gap-2 px-3 py-2">
+            <i class="i-jannchie-image-plus h-4 w-4" aria-hidden="true" />
+            {{ t("deck.dropImages") }}
+          </span>
+        </div>
         <DeckStage
           ref="stage"
           class="min-h-0 flex-1"
@@ -1511,6 +1786,7 @@ const hasSelection = computed(() => selection.value.length > 0)
           :editable="editable"
           :resolve-asset="resolveAsset"
           @select="select"
+          @menu="openStageMenu"
           @update="updateChildren"
           @seal="history.seal()"
           @edit="(path, at) => (path === undefined ? finishEditing() : startEditing(path, at))"
@@ -1519,28 +1795,28 @@ const hasSelection = computed(() => selection.value.length > 0)
           @text-key="onTextKey"
         />
 
-        <div class="border-t border-black/8 bg-white dark:border-white/8 dark:bg-ground-raised">
+        <div class="slides-notes border-t border-slides-line bg-slides-panel">
           <button
             type="button"
-            class="w-full flex items-center gap-1.5 px-3 py-1 text-left text-xs ink-muted surface-hover kbd-ring"
+            class="w-full flex items-center gap-1.5 px-3 py-1 text-left text-xs slides-ink-2 slides-hover slides-focus"
             :aria-expanded="notesOpen"
             @click="notesOpen = !notesOpen"
           >
             <i
-              class="i-jannchie-chevron-right fold-chevron"
+              class="i-jannchie-chevron-right slides-chevron"
               :class="{ 'rotate-90': notesOpen }"
               aria-hidden="true"
             />
             {{ t("deck.notes") }}
             <span class="flex-1" />
-            <span class="num">{{
+            <span class="slides-num">{{
               t("deck.slide.position", { slide: slideIndex + 1, count: deck.slides.length })
             }}</span>
           </button>
           <textarea
             v-if="notesOpen && slide"
             :value="slide.notes"
-            class="block h-20 w-full resize-none bg-transparent px-3 pb-2 text-sm outline-none placeholder:text-neutral-400"
+            class="block h-20 w-full resize-none bg-transparent px-3 pb-2 text-sm outline-none"
             :placeholder="t('deck.notesPlaceholder')"
             :aria-label="t('deck.notes')"
             :readonly="!editable"
@@ -1552,7 +1828,7 @@ const hasSelection = computed(() => selection.value.length > 0)
 
       <DeckInspector
         v-if="inspectorOpen"
-        class="w-64 shrink-0 border-l border-black/8 dark:border-white/8"
+        class="slides-inspector w-72 shrink-0 border-l border-slides-line"
         :deck="deck"
         :slide-index="slideIndex"
         :selection="selection"
@@ -1562,8 +1838,19 @@ const hasSelection = computed(() => selection.value.length > 0)
         @seal="history.seal()"
         @pin="stage?.pinSelection()"
         @nudge="(dx, dy) => stage?.nudge(dx, dy)"
+        @select="selectFromInspector"
       />
     </div>
+
+    <DeckContextMenu
+      v-if="menu"
+      :x="menu.x"
+      :y="menu.y"
+      :entries="menu.entries"
+      :label="t('deck.menu.label')"
+      :scheme="scheme"
+      @close="menu = undefined"
+    />
 
     <DeckPresenter
       v-if="presenting"

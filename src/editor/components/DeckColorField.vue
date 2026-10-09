@@ -16,6 +16,8 @@ const props = defineProps<{
   disabled?: boolean
   /** Offer to clear the colour, for a fill that may be none. */
   clearable?: boolean
+  /** What the field says when there is no value. */
+  placeholder?: string
 }>()
 
 const emit = defineEmits<{ change: [value: string | undefined]; done: [] }>()
@@ -60,16 +62,15 @@ function onText(event: Event) {
 </script>
 
 <template>
-  <div class="flex items-center gap-1">
+  <div class="slides-field-box slides-color-field min-w-0 flex-1 !pl-1" :class="{ 'opacity-50': disabled }">
     <label
-      class="relative h-6 w-6 shrink-0 overflow-hidden rounded-md ring-1 ring-black/15 dark:ring-white/15"
-      :class="{ 'opacity-40': disabled }"
+      class="relative h-5 w-5 shrink-0 overflow-hidden rounded-[calc(var(--slides-radius)-2px)] ring-1 ring-slides-line-strong ring-inset"
       :style="{ background: value ?? 'transparent' }"
       :title="label"
     >
       <span
         v-if="!value"
-        class="absolute inset-0 bg-[linear-gradient(135deg,transparent_45%,#ef4444_45%,#ef4444_55%,transparent_55%)]"
+        class="absolute inset-0 bg-[linear-gradient(135deg,transparent_45%,var(--slides-danger)_45%,var(--slides-danger)_55%,transparent_55%)]"
         aria-hidden="true"
       />
       <input
@@ -83,9 +84,9 @@ function onText(event: Event) {
       />
     </label>
     <input
-      class="field min-w-0 flex-1 !px-1.5 !py-0.5 !text-xs num"
+      class="h-full min-w-0 flex-1 bg-transparent outline-none slides-num"
       :value="value ?? ''"
-      :placeholder="t('deck.mixed')"
+      :placeholder="placeholder ?? t('deck.mixed')"
       :disabled="disabled"
       :aria-label="label"
       spellcheck="false"
@@ -94,7 +95,7 @@ function onText(event: Event) {
     <button
       v-if="clearable"
       type="button"
-      class="h-6 w-6 flex shrink-0 items-center justify-center rounded-md ink-soft surface-hover kbd-ring disabled:opacity-35"
+      class="-mr-1 h-5 w-5 flex shrink-0 items-center justify-center rounded slides-muted slides-hover slides-focus disabled:opacity-0"
       :title="t('deck.noFill')"
       :aria-label="t('deck.noFill')"
       :disabled="disabled || !value"

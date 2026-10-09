@@ -13,6 +13,9 @@ import {
 // colours from `@jannchie/slides/uno` into its own config and builds the
 // editor's classes along with the rest of its page.
 export default defineConfig({
+  // The whole sheet inside `@layer slides`: a host's own rules, outside any
+  // layer, win over it whatever their weight.
+  outputToCssLayers: { cssLayerName: (layer) => `slides.${layer}` },
   content: {
     pipeline: {
       // Templates and plain modules both: `mountDeckEditor` names its classes
@@ -24,7 +27,6 @@ export default defineConfig({
   },
   theme: {
     colors: deckEditorColors,
-    font: { num: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" },
   },
   shortcuts: deckEditorShortcuts,
   preflights: deckEditorPreflights,

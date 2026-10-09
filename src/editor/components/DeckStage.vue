@@ -88,6 +88,8 @@ const emit = defineEmits<{
   textChange: [nodes: DeckNode[]]
   textDone: []
   textKey: [event: KeyboardEvent, element: HTMLElement]
+  /** A right click: where, and the deepest thing under it, if anything. */
+  menu: [at: { x: number; y: number }, under: DeckPath | undefined]
 }>()
 
 defineOptions({ inheritAttrs: false })
@@ -1164,7 +1166,68 @@ function onRendered() {
   remeasure()
 }
 
-defineExpose({ measure, remeasure, nudge, pinSelection, elementOf, align, distribute, group, ungroup })
+/**
+ * A right click selects what it is on, as a press would, and asks for the
+ * menu. Inside the text being typed into it is left to the browser, whose
+ * menu is the one that spells and copies.
+ */
+function onContextMenu(event: MouseEvent) {
+  if (slide.value === undefined) {
+    return
+  }
+
+  const target = event.target as HTMLElement
+
+  if (props.editingPath !== undefined && elementOf(props.editingPath)?.contains(target)) {
+    return
+  }
+
+  event.preventDefault()
+
+  if (props.editingPath !== undefined) {
+    emit("textDone")
+  }
+
+  const deepest = deepestAt(target)
+
+  if (deepest === undefined) {
+    emit("select", [], props.scope)
+  } else {
+    const picked = pick(deepest)
+
+    if (!props.selection.some((path) => samePath(path, picked.path) || isWithin(path, picked.path))) {
+      emit("select", [picked.path], picked.scope)
+    }
+  }
+
+  emit("menu", { x: event.clientX, y: event.clientY }, deepest)
+}
+
+/** Where a point on screen falls on the slide, in the slide's own pixels. */
+function slidePoint(clientX: number, clientY: number): Point | undefined {
+  const rect = frame.value?.getBoundingClientRect()
+
+  if (rect === undefined || rect.width === 0) {
+    return undefined
+  }
+
+  const ratio = rect.width / DECK_WIDTH
+
+  return { x: (clientX - rect.left) / ratio, y: (clientY - rect.top) / ratio }
+}
+
+defineExpose({
+  measure,
+  remeasure,
+  nudge,
+  pinSelection,
+  elementOf,
+  align,
+  distribute,
+  group,
+  ungroup,
+  slidePoint,
+})
 </script>
 
 <template>
@@ -1173,6 +1236,12 @@ defineExpose({ measure, remeasure, nudge, pinSelection, elementOf, align, distri
     class="relative h-full w-full overflow-hidden"
     v-bind="$attrs"
     @pointerdown.self="emit('select', [], [])"
+    @contextmenu.self.prevent="
+      (event: MouseEvent) => {
+        emit('select', [], [])
+        emit('menu', { x: event.clientX, y: event.clientY }, undefined)
+      }
+    "
   >
     <div
       v-if="slide"
@@ -1187,10 +1256,11 @@ defineExpose({ measure, remeasure, nudge, pinSelection, elementOf, align, distri
       @pointercancel="onPointerUp"
       @pointerleave="onPointerLeave"
       @dblclick="onDoubleClick"
+      @contextmenu="onContextMenu"
       @load.capture="remeasure"
     >
       <div
-        class="absolute left-0 top-0 origin-top-left shadow-md ring-1 ring-black/10 dark:ring-white/10"
+        class="absolute left-0 top-0 origin-top-left shadow-md ring-1 ring-slides-line"
         :style="{ transform: `scale(${scale})`, width: '1920px', height: '1080px' }"
       >
         <DeckSlideView
@@ -1211,12 +1281,12 @@ defineExpose({ measure, remeasure, nudge, pinSelection, elementOf, align, distri
       <div class="pointer-events-none absolute inset-0">
         <div
           v-if="scopeBox"
-          class="absolute outline-1 outline-dashed outline-blue-500/70"
+          class="absolute outline-1 outline-dashed outline-slides-selection/70"
           :style="boxStyle(scopeBox)"
         />
         <div
           v-if="hover"
-          class="absolute outline-1 outline-solid outline-blue-500/60"
+          class="absolute outline-1 outline-solid outline-slides-selection/60"
           :style="boxStyle(hover)"
         />
 
@@ -1228,24 +1298,28 @@ defineExpose({ measure, remeasure, nudge, pinSelection, elementOf, align, distri
                 :y1="item.ends[0].y * scale"
                 :x2="item.ends[1].x * scale"
                 :y2="item.ends[1].y * scale"
-                class="stroke-blue-500"
+                class="stroke-slides-selection"
                 stroke-width="1.5"
                 stroke-dasharray="4 3"
               />
             </svg>
           </template>
-          <div v-else class="absolute outline-1.5 outline-solid outline-blue-500" :style="boxStyle(item.box)">
+          <div
+            v-else
+            class="absolute outline-1.5 outline-solid outline-slides-selection"
+            :style="boxStyle(item.box)"
+          >
             <template v-if="single === item && editable && !editingPath">
               <span
                 v-for="handle in handles"
                 :key="handle.join()"
                 :data-handle="handle.join()"
-                class="pointer-events-auto absolute h-2.5 w-2.5 rounded-sm bg-white ring-1.5 ring-blue-500 -translate-x-1/2 -translate-y-1/2"
+                class="pointer-events-auto absolute h-2.5 w-2.5 rounded-sm bg-white ring-1.5 ring-slides-selection -translate-x-1/2 -translate-y-1/2"
                 :style="handleStyle(handle)"
               />
               <span
                 data-handle="rotate"
-                class="pointer-events-auto absolute left-1/2 top-0 h-3 w-3 cursor-grab rounded-full bg-white ring-1.5 ring-blue-500 -translate-x-1/2 -translate-y-[22px]"
+                class="pointer-events-auto absolute left-1/2 top-0 h-3 w-3 cursor-grab rounded-full bg-white ring-1.5 ring-slides-selection -translate-x-1/2 -translate-y-[22px]"
                 :title="t('deck.rotate')"
               />
             </template>
@@ -1257,7 +1331,7 @@ defineExpose({ measure, remeasure, nudge, pinSelection, elementOf, align, distri
             v-for="(point, which) in single.ends"
             :key="which"
             :data-handle="`end-${which}`"
-            class="pointer-events-auto absolute h-3 w-3 cursor-crosshair rounded-full bg-white ring-1.5 ring-blue-500 -translate-x-1/2 -translate-y-1/2"
+            class="pointer-events-auto absolute h-3 w-3 cursor-crosshair rounded-full bg-white ring-1.5 ring-slides-selection -translate-x-1/2 -translate-y-1/2"
             :style="pointStyle(point)"
           />
         </template>
@@ -1270,7 +1344,7 @@ defineExpose({ measure, remeasure, nudge, pinSelection, elementOf, align, distri
         />
         <div
           v-if="marquee"
-          class="absolute border border-blue-500 bg-blue-500/10"
+          class="absolute border border-slides-selection bg-slides-selection/10"
           :style="boxStyle({ ...marquee, rotation: 0 })"
         />
       </div>

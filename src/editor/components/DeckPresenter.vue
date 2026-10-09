@@ -490,7 +490,7 @@ onBeforeUnmount(() => {
       </div>
       <button
         type="button"
-        class="absolute right-3 top-3 h-8 w-8 flex items-center justify-center rounded-md bg-white/10 text-white opacity-0 transition-quick hover:opacity-100 focus-visible:opacity-100"
+        class="absolute right-3 top-3 h-8 w-8 flex items-center justify-center rounded-md bg-white/10 text-white opacity-0 slides-transition hover:opacity-100 focus-visible:opacity-100"
         :title="t('deck.presenter.exit')"
         :aria-label="t('deck.presenter.exit')"
         @click.stop="close"

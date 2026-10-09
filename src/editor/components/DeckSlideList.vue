@@ -27,6 +27,8 @@ const emit = defineEmits<{
   remove: [index: number]
   move: [from: number, to: number]
   toggleHidden: [index: number]
+  /** A right click on a slide: which, and where. */
+  menu: [index: number, at: { x: number; y: number }]
 }>()
 
 /** The thumbnail's width in pixels, which is what its slide is scaled to. */
@@ -134,10 +136,10 @@ watch(
 
 <template>
   <nav class="flex min-h-0 flex-col" :aria-label="t('deck.slide.list')">
-    <div class="flex items-center gap-0.5 border-b border-black/8 px-1.5 py-1 dark:border-white/8">
+    <div class="flex items-center gap-0.5 border-b border-slides-line px-1.5 py-1">
       <button
         type="button"
-        class="icon-button !h-7 !w-7"
+        class="slides-icon-button"
         :title="t('deck.slide.add')"
         :aria-label="t('deck.slide.add')"
         :disabled="!editable"
@@ -147,7 +149,7 @@ watch(
       </button>
       <button
         type="button"
-        class="icon-button !h-7 !w-7"
+        class="slides-icon-button"
         :title="t('deck.slide.duplicate')"
         :aria-label="t('deck.slide.duplicate')"
         :disabled="!editable"
@@ -157,7 +159,7 @@ watch(
       </button>
       <button
         type="button"
-        class="icon-button !h-7 !w-7"
+        class="slides-icon-button"
         :title="deck.slides[slideIndex]?.hidden ? t('deck.slide.show') : t('deck.slide.hide')"
         :aria-label="deck.slides[slideIndex]?.hidden ? t('deck.slide.show') : t('deck.slide.hide')"
         :disabled="!editable"
@@ -172,7 +174,7 @@ watch(
       <span class="flex-1" />
       <button
         type="button"
-        class="icon-button !h-7 !w-7"
+        class="slides-icon-button"
         :title="t('deck.slide.delete')"
         :aria-label="t('deck.slide.delete')"
         :disabled="!editable || deck.slides.length <= 1"
@@ -201,28 +203,36 @@ watch(
         >
           <span
             v-if="dropAt === index"
-            class="absolute -top-1 left-4 right-0 h-0.5 rounded bg-blue-500"
+            class="absolute -top-1 left-4 right-0 h-0.5 rounded bg-slides-selection"
             aria-hidden="true"
           />
           <span
             v-if="dropAt === index + 1 && index === deck.slides.length - 1"
-            class="absolute -bottom-1 left-4 right-0 h-0.5 rounded bg-blue-500"
+            class="absolute -bottom-1 left-4 right-0 h-0.5 rounded bg-slides-selection"
             aria-hidden="true"
           />
           <button
             type="button"
-            class="w-full flex gap-1.5 rounded-md text-left kbd-ring"
+            class="w-full flex gap-1.5 rounded-md text-left slides-focus"
             :data-slide-index="index"
             :aria-current="index === slideIndex ? 'true' : undefined"
             :aria-label="`${index + 1}. ${deckSlideTitle(item) || t('deck.slide.untitled')}`"
             @click="emit('pick', index)"
+            @contextmenu.prevent="
+              (event: MouseEvent) => {
+                emit('pick', index)
+                emit('menu', index, { x: event.clientX, y: event.clientY })
+              }
+            "
             @keydown="onKeydown($event, index)"
           >
-            <span class="w-4 shrink-0 pt-0.5 text-right text-[0.65rem] ink-soft num">{{ index + 1 }}</span>
+            <span class="w-4 shrink-0 pt-0.5 text-right text-[0.65rem] slides-muted slides-num">{{
+              index + 1
+            }}</span>
             <span
               class="relative block shrink-0 overflow-hidden rounded-sm bg-white ring-1"
               :class="[
-                index === slideIndex ? 'ring-2 ring-blue-500' : 'ring-black/10 dark:ring-white/10',
+                index === slideIndex ? 'ring-2 ring-slides-selection' : 'ring-slides-line',
                 { 'opacity-45': item.hidden },
               ]"
               :style="{ width: `${THUMB_WIDTH}px`, height: `${THUMB_WIDTH * (9 / 16)}px` }"
@@ -236,7 +246,7 @@ watch(
               </span>
               <i
                 v-if="item.hidden"
-                class="i-jannchie-eye-off absolute bottom-1 right-1 h-3.5 w-3.5 text-neutral-500"
+                class="i-jannchie-eye-off absolute bottom-1 right-1 h-3.5 w-3.5 slides-muted"
               />
             </span>
           </button>

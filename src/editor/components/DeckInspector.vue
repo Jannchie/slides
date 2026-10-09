@@ -6,6 +6,8 @@ import {
   DECK_SHAPE_KINDS,
   DECK_TRANSITIONS,
   deckStyleApplies,
+  elementAt,
+  editTable,
   nodeAt,
   patchNodeStyle,
   patchStyle,
@@ -15,6 +17,7 @@ import {
   rotationOf,
   setAttribute,
   strokeOf,
+  tableAt,
   updateAt,
   updateSlide,
   updateSlideChildren,
@@ -27,6 +30,7 @@ import {
   type DeckPath,
   type DeckSvg,
   type DeckTransition,
+  type TableEdit,
 } from "../../index"
 import { firstFamily, type Box } from "../../dom"
 import { announce } from "../support/announce"
@@ -34,6 +38,8 @@ import { announce } from "../support/announce"
 import { formatError, uploadable, useDeckAssets } from "../host"
 import { t } from "../i18n"
 import DeckColorField from "./DeckColorField.vue"
+import DeckInspectorRow from "./DeckInspectorRow.vue"
+import DeckNumberField from "./DeckNumberField.vue"
 
 /**
  * The format of what is selected, or of the slide and the deck when nothing
@@ -59,6 +65,8 @@ const emit = defineEmits<{
   seal: []
   pin: []
   nudge: [dx: number, dy: number]
+  /** What should be selected after a change that moved what was. */
+  select: [paths: DeckPath[]]
 }>()
 
 /** A field's name in the reader's language. */
@@ -115,6 +123,15 @@ type Field =
   | "fonts"
   | "addFont"
   | "slideHtml"
+  | "dimensions"
+  | "align"
+  | "fit"
+  | "altText"
+  | "gridColumns"
+  | "section"
+  | "table"
+  | "rows"
+  | "spacing"
 
 const label = (name: Field) => t(`deck.field.${name}`)
 
@@ -296,6 +313,50 @@ function setRotation(event: Event) {
 }
 
 // ---------------------------------------------------------------------------
+// Tables
+// ---------------------------------------------------------------------------
+
+/** The table the one selected thing is, or is inside, and the cell it is in. */
+const table = computed(() => {
+  const current = slide.value
+  const path = props.selection.length === 1 ? props.selection[0] : undefined
+  const found = current === undefined || path === undefined ? undefined : tableAt(current.children, path)
+  const node =
+    found === undefined || current === undefined ? undefined : elementAt(current.children, found.table)
+
+  if (found === undefined || node === undefined) {
+    return undefined
+  }
+
+  const rows = node.children.filter((row) => row.type === "element")
+  const columns = Math.max(0, ...rows.map((row) => (row.type === "element" ? row.children.length : 0)))
+
+  return { ...found, node, rows: rows.length, columns }
+})
+
+/** One edit to the table, the selection following the cell it was on. */
+function changeTable(edit: TableEdit) {
+  const path = props.selection[0]
+  const current = slide.value
+
+  if (!props.editable || path === undefined || current === undefined) {
+    return
+  }
+
+  const result = editTable(current.children, path, edit)
+
+  if (result !== undefined) {
+    emit(
+      "commit",
+      updateSlideChildren(props.deck, props.slideIndex, () => result.nodes),
+      "table",
+    )
+    emit("seal")
+    emit("select", [result.selection])
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Type
 // ---------------------------------------------------------------------------
 
@@ -390,6 +451,19 @@ const gradient = computed(() => {
   return match === null ? undefined : { angle: Number(match[1]), from: match[2]!, to: match[3]! }
 })
 const fillKind = computed(() => (fill.value?.includes("gradient(") ? "gradient" : "solid"))
+/**
+ * What a control shows when the selection has no value of its own: across
+ * several that differ, "mixed"; on one, nothing — it is taking what it is
+ * inside, which is not a value to report.
+ */
+const unset = computed(() => (selected.value.length > 1 ? t("deck.mixed") : ""))
+
+/** A row or a cell: placed by its table, so it has no position or size of its own to set. */
+const inTable = computed(() => ["tr", "td", "th"].includes(singleTag.value ?? ""))
+
+const slideFillKind = computed(() =>
+  slide.value?.style.background?.includes("gradient(") ? "gradient" : "solid",
+)
 
 function setGradient(part: Partial<{ angle: number; from: string; to: string }>) {
   const current = gradient.value ?? {
@@ -688,94 +762,158 @@ function setHidden(event: Event) {
 
 <template>
   <aside
-    class="min-h-0 overflow-y-auto bg-white text-xs dark:bg-ground-raised"
+    class="min-h-0 overflow-y-auto bg-slides-panel text-[length:var(--slides-font-size)] text-slides-text"
     :aria-label="t('deck.inspector')"
     :inert="!editable"
   >
     <!-- The selection. -->
     <template v-if="selected.length > 0">
-      <section v-if="single && !isConnector" class="inspector-section">
-        <h3 class="inspector-heading">{{ label("position") }}</h3>
-        <div class="grid grid-cols-2 gap-1.5">
-          <label class="inspector-number"
-            ><span>X</span><input type="number" :value="box ? Math.round(box.x) : ''" @change="setX"
-          /></label>
-          <label class="inspector-number"
-            ><span>Y</span><input type="number" :value="box ? Math.round(box.y) : ''" @change="setY"
-          /></label>
-          <label class="inspector-number"
-            ><span>W</span
-            ><input
-              type="number"
-              min="1"
-              :value="box ? Math.round(box.w) : ''"
-              @change="setSize('width', $event)"
-          /></label>
-          <label class="inspector-number"
-            ><span>H</span
-            ><input
-              type="number"
-              min="1"
-              :value="box ? Math.round(box.h) : ''"
-              @change="setSize('height', $event)"
-          /></label>
-          <label class="inspector-number col-span-2">
-            <i class="i-jannchie-rotate h-3.5 w-3.5" :title="label('rotation')" />
-            <input
-              type="number"
-              step="1"
-              :value="Math.round(rotationOf(single.node.style))"
-              :aria-label="label('rotation')"
-              @change="setRotation"
-            />
-          </label>
-        </div>
-        <button
-          v-if="!pinned"
-          type="button"
-          class="button-secondary mt-1.5 w-full justify-center !py-1 !text-xs"
-          @click="emit('pin')"
-        >
+      <section v-if="single && !isConnector && !inTable" class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("position") }}</h3>
+        <DeckInspectorRow :label="label('position')">
+          <DeckNumberField
+            prefix="X"
+            :label="`${label('position')} X`"
+            :value="box ? Math.round(box.x) : ''"
+            @change="setX"
+          />
+          <DeckNumberField
+            prefix="Y"
+            :label="`${label('position')} Y`"
+            :value="box ? Math.round(box.y) : ''"
+            @change="setY"
+          />
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('dimensions')">
+          <DeckNumberField
+            prefix="W"
+            :label="`${label('dimensions')} W`"
+            :min="1"
+            :value="box ? Math.round(box.w) : ''"
+            @change="setSize('width', $event)"
+          />
+          <DeckNumberField
+            prefix="H"
+            :label="`${label('dimensions')} H`"
+            :min="1"
+            :value="box ? Math.round(box.h) : ''"
+            @change="setSize('height', $event)"
+          />
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('rotation')">
+          <DeckNumberField
+            prefix="i-jannchie-rotate"
+            unit="°"
+            :label="label('rotation')"
+            :value="Math.round(rotationOf(single.node.style))"
+            @change="setRotation"
+          />
+          <span class="min-w-0 flex-1" />
+        </DeckInspectorRow>
+        <button v-if="!pinned" type="button" class="slides-button w-full" @click="emit('pin')">
           <i class="i-jannchie-pin-diagonal h-3.5 w-3.5" aria-hidden="true" />
           {{ label("pin") }}
         </button>
       </section>
 
-      <section v-if="applies('font-size')" class="inspector-section">
-        <h3 class="inspector-heading">{{ label("text") }}</h3>
-        <select
-          class="field !py-1 !text-xs"
-          :value="firstFamily(common('font-family')) ?? ''"
-          :aria-label="label('font')"
-          @change="setFamily(($event.target as HTMLSelectElement).value, 'selection')"
-        >
-          <option value="" disabled>{{ label("font") }}</option>
-          <option v-for="family in fontOptions" :key="family" :value="firstFamily(family)">
-            {{ firstFamily(family) }}
-          </option>
-        </select>
-        <div class="mt-1.5 grid grid-cols-[1fr_1fr] gap-1.5">
-          <label class="inspector-number">
-            <i class="i-jannchie-heading h-3.5 w-3.5" :title="label('size')" />
-            <input
-              type="number"
-              min="8"
-              max="400"
-              :value="pixels(common('font-size'))"
-              :placeholder="t('deck.mixed')"
-              :aria-label="label('size')"
-              @change="
-                ($event) => {
-                  setStyle({ 'font-size': `${numberOf($event)}px` })
-                  emit('seal')
-                }
-              "
-            />
-          </label>
+      <section v-if="table" class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("table") }}</h3>
+        <DeckInspectorRow :label="label('rows')">
+          <button
+            type="button"
+            class="slides-button min-w-0 flex-1"
+            :title="t('deck.table.rowAbove')"
+            @click="changeTable('rowAbove')"
+          >
+            <i class="i-jannchie-plus h-3.5 w-3.5" aria-hidden="true" />{{ t("deck.table.above") }}
+          </button>
+          <button
+            type="button"
+            class="slides-button min-w-0 flex-1"
+            :title="t('deck.table.rowBelow')"
+            @click="changeTable('rowBelow')"
+          >
+            <i class="i-jannchie-plus h-3.5 w-3.5" aria-hidden="true" />{{ t("deck.table.below") }}
+          </button>
+          <button
+            type="button"
+            class="slides-icon-button"
+            :title="t('deck.table.removeRow')"
+            :aria-label="t('deck.table.removeRow')"
+            :disabled="table.rows <= 1"
+            @click="changeTable('removeRow')"
+          >
+            <i class="i-jannchie-trash h-4 w-4" aria-hidden="true" />
+          </button>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('gridColumns')">
+          <button
+            type="button"
+            class="slides-button min-w-0 flex-1"
+            :title="t('deck.table.columnLeft')"
+            @click="changeTable('columnLeft')"
+          >
+            <i class="i-jannchie-plus h-3.5 w-3.5" aria-hidden="true" />{{ t("deck.table.left") }}
+          </button>
+          <button
+            type="button"
+            class="slides-button min-w-0 flex-1"
+            :title="t('deck.table.columnRight')"
+            @click="changeTable('columnRight')"
+          >
+            <i class="i-jannchie-plus h-3.5 w-3.5" aria-hidden="true" />{{ t("deck.table.right") }}
+          </button>
+          <button
+            type="button"
+            class="slides-icon-button"
+            :title="t('deck.table.removeColumn')"
+            :aria-label="t('deck.table.removeColumn')"
+            :disabled="table.columns <= 1"
+            @click="changeTable('removeColumn')"
+          >
+            <i class="i-jannchie-trash h-4 w-4" aria-hidden="true" />
+          </button>
+        </DeckInspectorRow>
+        <p class="slides-muted">
+          {{ table.row === undefined ? t("deck.table.hint") : t("deck.table.atCell") }}
+        </p>
+      </section>
+
+      <section v-if="applies('font-size')" class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("text") }}</h3>
+        <DeckInspectorRow :label="label('font')">
           <select
-            class="field !py-1 !text-xs"
+            class="slides-field"
+            :value="firstFamily(common('font-family')) ?? ''"
+            :aria-label="label('font')"
+            @change="setFamily(($event.target as HTMLSelectElement).value, 'selection')"
+          >
+            <option value="" disabled>{{ unset }}</option>
+            <option v-for="family in fontOptions" :key="family" :value="firstFamily(family)">
+              {{ firstFamily(family) }}
+            </option>
+          </select>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('size')">
+          <DeckNumberField
+            unit="px"
+            :min="8"
+            :max="400"
+            :label="label('size')"
+            :value="pixels(common('font-size'))"
+            :placeholder="unset"
+            @change="
+              ($event) => {
+                setStyle({ 'font-size': `${numberOf($event)}px` })
+                emit('seal')
+              }
+            "
+          />
+          <select
+            class="slides-field min-w-0 flex-1"
             :value="common('font-weight') ?? ''"
             :aria-label="label('weight')"
+            :title="label('weight')"
             @change="
               ($event) => {
                 setStyle({ 'font-weight': ($event.target as HTMLSelectElement).value })
@@ -786,39 +924,41 @@ function setHidden(event: Event) {
             <option value="" disabled>{{ label("weight") }}</option>
             <option v-for="weight in WEIGHTS" :key="weight" :value="weight">{{ weight }}</option>
           </select>
-        </div>
-        <div class="mt-1.5">
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('color')">
           <DeckColorField
+            :placeholder="unset"
             :value="common('color')"
             :label="label('color')"
             @change="(value) => setStyle({ color: value }, 'color')"
             @done="emit('seal')"
           />
-        </div>
-        <div class="mt-1.5 flex items-center gap-0.5">
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('align')">
+          <div class="slides-segmented min-w-0 flex-1" role="group" :aria-label="label('align')">
+            <button
+              v-for="align in ALIGNS"
+              :key="align"
+              type="button"
+              class="slides-segment"
+              :class="{ 'slides-segment-on': common('text-align') === align }"
+              :title="t(`deck.align.text.${align}`)"
+              :aria-label="t(`deck.align.text.${align}`)"
+              :aria-pressed="common('text-align') === align"
+              @click="
+                () => {
+                  setStyle({ 'text-align': common('text-align') === align ? undefined : align })
+                  emit('seal')
+                }
+              "
+            >
+              <i :class="ALIGN_ICONS[align]" class="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
           <button
-            v-for="align in ALIGNS"
-            :key="align"
             type="button"
-            class="h-7 w-7 flex items-center justify-center rounded-md surface-hover kbd-ring"
-            :class="{ 'surface-strong ink-accent': common('text-align') === align }"
-            :title="t(`deck.align.text.${align}`)"
-            :aria-label="t(`deck.align.text.${align}`)"
-            :aria-pressed="common('text-align') === align"
-            @click="
-              () => {
-                setStyle({ 'text-align': common('text-align') === align ? undefined : align })
-                emit('seal')
-              }
-            "
-          >
-            <i :class="ALIGN_ICONS[align]" class="h-4 w-4" aria-hidden="true" />
-          </button>
-          <span class="flex-1" />
-          <button
-            type="button"
-            class="h-7 w-7 flex items-center justify-center rounded-md surface-hover kbd-ring"
-            :class="{ 'surface-strong ink-accent': common('text-transform') === 'uppercase' }"
+            class="slides-icon-button border border-slides-line"
+            :class="{ 'slides-pressed': common('text-transform') === 'uppercase' }"
             :title="label('uppercase')"
             :aria-label="label('uppercase')"
             :aria-pressed="common('text-transform') === 'uppercase'"
@@ -833,84 +973,90 @@ function setHidden(event: Event) {
           >
             <i class="i-jannchie-typography h-4 w-4" aria-hidden="true" />
           </button>
-        </div>
-        <div class="mt-1.5 grid grid-cols-2 gap-1.5">
-          <label class="inspector-number">
-            <i class="i-jannchie-line-height h-3.5 w-3.5" :title="label('lineHeight')" />
-            <input
-              type="number"
-              step="0.05"
-              min="0.5"
-              max="4"
-              :value="common('line-height') ?? ''"
-              :aria-label="label('lineHeight')"
-              @change="
-                ($event) => {
-                  setStyle({ 'line-height': String(numberOf($event)) })
-                  emit('seal')
-                }
-              "
-            />
-          </label>
-          <label class="inspector-number">
-            <i class="i-jannchie-letter-spacing h-3.5 w-3.5" :title="label('letterSpacing')" />
-            <input
-              type="number"
-              step="0.5"
-              :value="pixels(common('letter-spacing'))"
-              :aria-label="label('letterSpacing')"
-              @change="
-                ($event) => {
-                  setStyle({ 'letter-spacing': `${numberOf($event)}px` })
-                  emit('seal')
-                }
-              "
-            />
-          </label>
-        </div>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('spacing')">
+          <DeckNumberField
+            prefix="i-jannchie-line-height"
+            :step="0.05"
+            :min="0.5"
+            :max="4"
+            :label="label('lineHeight')"
+            :value="common('line-height') ?? ''"
+            @change="
+              ($event) => {
+                setStyle({ 'line-height': String(numberOf($event)) })
+                emit('seal')
+              }
+            "
+          />
+          <DeckNumberField
+            prefix="i-jannchie-letter-spacing"
+            unit="px"
+            :step="0.5"
+            :label="label('letterSpacing')"
+            :value="pixels(common('letter-spacing'))"
+            @change="
+              ($event) => {
+                setStyle({ 'letter-spacing': `${numberOf($event)}px` })
+                emit('seal')
+              }
+            "
+          />
+        </DeckInspectorRow>
       </section>
 
-      <section v-if="applies('background') && !isConnector" class="inspector-section">
-        <h3 class="inspector-heading">{{ label("fill") }}</h3>
-        <div class="segmented mb-1.5 w-full">
-          <button
-            v-for="kind in ['solid', 'gradient'] as const"
-            :key="kind"
-            type="button"
-            class="segment flex-1 justify-center !px-2 !py-0.5 !text-xs"
-            :class="fillKind === kind ? 'segment-selected' : 'ink-muted'"
-            @click="setFillKind(kind)"
-          >
-            {{ label(kind) }}
-          </button>
-        </div>
-        <DeckColorField
-          v-if="fillKind === 'solid'"
-          :value="fill"
-          :label="label('fill')"
-          clearable
-          @change="(value) => setStyle({ background: value }, 'background')"
-          @done="emit('seal')"
-        />
-        <div v-else-if="gradient" class="flex flex-col gap-1.5">
+      <section v-if="applies('background') && !isConnector" class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("fill") }}</h3>
+        <DeckInspectorRow :label="label('fill')">
+          <div class="slides-segmented min-w-0 flex-1" role="group" :aria-label="label('fill')">
+            <button
+              v-for="kind in ['solid', 'gradient'] as const"
+              :key="kind"
+              type="button"
+              class="slides-segment"
+              :class="{ 'slides-segment-on': fillKind === kind }"
+              :aria-pressed="fillKind === kind"
+              @click="setFillKind(kind)"
+            >
+              {{ label(kind) }}
+            </button>
+          </div>
+        </DeckInspectorRow>
+        <DeckInspectorRow v-if="fillKind === 'solid'" :label="label('color')">
           <DeckColorField
-            :value="gradient.from"
-            :label="label('from')"
-            @change="(value) => value && setGradient({ from: value })"
+            :placeholder="unset"
+            :value="fill"
+            :label="label('fill')"
+            clearable
+            @change="(value) => setStyle({ background: value }, 'background')"
             @done="emit('seal')"
           />
-          <DeckColorField
-            :value="gradient.to"
-            :label="label('to')"
-            @change="(value) => value && setGradient({ to: value })"
-            @done="emit('seal')"
-          />
-          <label class="inspector-number">
-            <i class="i-jannchie-rotate h-3.5 w-3.5" :title="label('angle')" />
-            <input
-              type="number"
+        </DeckInspectorRow>
+        <template v-else-if="gradient">
+          <DeckInspectorRow :label="label('from')">
+            <DeckColorField
+              :placeholder="unset"
+              :value="gradient.from"
+              :label="label('from')"
+              @change="(value) => value && setGradient({ from: value })"
+              @done="emit('seal')"
+            />
+          </DeckInspectorRow>
+          <DeckInspectorRow :label="label('to')">
+            <DeckColorField
+              :placeholder="unset"
+              :value="gradient.to"
+              :label="label('to')"
+              @change="(value) => value && setGradient({ to: value })"
+              @done="emit('seal')"
+            />
+          </DeckInspectorRow>
+          <DeckInspectorRow :label="label('angle')">
+            <DeckNumberField
+              prefix="i-jannchie-rotate"
+              unit="°"
+              :label="label('angle')"
               :value="gradient.angle"
-              :aria-label="label('angle')"
               @change="
                 ($event) => {
                   setGradient({ angle: numberOf($event) ?? 135 })
@@ -918,34 +1064,33 @@ function setHidden(event: Event) {
                 }
               "
             />
-          </label>
-        </div>
-        <p v-else class="ink-soft">{{ fill }}</p>
+            <span class="min-w-0 flex-1" />
+          </DeckInspectorRow>
+        </template>
+        <p v-else class="break-all slides-muted slides-num">{{ fill }}</p>
       </section>
 
-      <section v-if="applies('border') && !isConnector" class="inspector-section">
-        <h3 class="inspector-heading">{{ label("border") }}</h3>
-        <div class="grid grid-cols-[4.5rem_1fr] gap-1.5">
-          <label class="inspector-number">
-            <i class="i-jannchie-square h-3.5 w-3.5" :title="label('borderWidth')" />
-            <input
-              type="number"
-              min="0"
-              max="32"
-              :value="border?.width ?? 0"
-              :aria-label="label('borderWidth')"
-              @change="
-                ($event) => {
-                  setBorder({ width: numberOf($event) ?? 0 })
-                  emit('seal')
-                }
-              "
-            />
-          </label>
+      <section v-if="applies('border') && !isConnector" class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("border") }}</h3>
+        <DeckInspectorRow :label="label('borderWidth')">
+          <DeckNumberField
+            unit="px"
+            :min="0"
+            :max="32"
+            :label="label('borderWidth')"
+            :value="border?.width ?? 0"
+            @change="
+              ($event) => {
+                setBorder({ width: numberOf($event) ?? 0 })
+                emit('seal')
+              }
+            "
+          />
           <select
-            class="field !py-1 !text-xs"
+            class="slides-field min-w-0 flex-1"
             :value="border?.style ?? 'solid'"
             :aria-label="label('borderStyle')"
+            :title="label('borderStyle')"
             @change="
               ($event) => {
                 setBorder({ style: ($event.target as HTMLSelectElement).value })
@@ -961,22 +1106,23 @@ function setHidden(event: Event) {
               {{ t(`deck.stroke.${style}`) }}
             </option>
           </select>
-        </div>
-        <div class="mt-1.5">
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('color')">
           <DeckColorField
+            :placeholder="unset"
             :value="border?.color"
             :label="label('borderColor')"
             @change="(value) => value && setBorder({ color: value })"
             @done="emit('seal')"
           />
-        </div>
-        <label v-if="applies('border-radius')" class="inspector-number mt-1.5">
-          <i class="i-jannchie-corner-radius h-3.5 w-3.5" :title="label('radius')" />
-          <input
-            type="number"
-            min="0"
+        </DeckInspectorRow>
+        <DeckInspectorRow v-if="applies('border-radius')" :label="label('radius')">
+          <DeckNumberField
+            prefix="i-jannchie-corner-radius"
+            unit="px"
+            :min="0"
+            :label="label('radius')"
             :value="pixels(common('border-radius'))"
-            :aria-label="label('radius')"
             @change="
               ($event) => {
                 setStyle({ 'border-radius': `${numberOf($event)}px` })
@@ -984,20 +1130,21 @@ function setHidden(event: Event) {
               }
             "
           />
-        </label>
+          <span class="min-w-0 flex-1" />
+        </DeckInspectorRow>
       </section>
 
-      <section class="inspector-section">
-        <h3 class="inspector-heading">{{ label("effects") }}</h3>
-        <label class="flex items-center gap-2">
-          <span class="w-14 ink-muted">{{ label("opacity") }}</span>
+      <section class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("effects") }}</h3>
+        <DeckInspectorRow :label="label('opacity')">
           <input
             type="range"
             min="0"
             max="1"
             step="0.05"
-            class="min-w-0 flex-1"
+            class="h-[var(--slides-control-height)] min-w-0 flex-1"
             :value="common('opacity') ?? '1'"
+            :aria-label="label('opacity')"
             @input="
               setStyle(
                 {
@@ -1011,12 +1158,15 @@ function setHidden(event: Event) {
             "
             @change="emit('seal')"
           />
-        </label>
-        <label v-if="applies('box-shadow')" class="mt-1.5 flex items-center gap-2">
-          <span class="w-14 ink-muted">{{ label("shadow") }}</span>
+          <span class="w-9 shrink-0 text-right slides-ink-2 slides-num">
+            {{ Math.round(Number(common("opacity") ?? 1) * 100) }}%
+          </span>
+        </DeckInspectorRow>
+        <DeckInspectorRow v-if="applies('box-shadow')" :label="label('shadow')">
           <select
-            class="field min-w-0 flex-1 !py-1 !text-xs"
+            class="slides-field"
             :value="shadow"
+            :aria-label="label('shadow')"
             @change="
               ($event) => {
                 setStyle({ 'box-shadow': SHADOWS[($event.target as HTMLSelectElement).value as ShadowName] })
@@ -1031,60 +1181,59 @@ function setHidden(event: Event) {
               {{ t("deck.shadow.custom") }}
             </option>
           </select>
-        </label>
+        </DeckInspectorRow>
       </section>
 
-      <section v-if="isContainer && single" class="inspector-section">
-        <h3 class="inspector-heading">{{ label("layout") }}</h3>
-        <div class="segmented mb-1.5 w-full">
-          <button
-            v-for="kind in ['column', 'row', 'grid'] as const"
-            :key="kind"
-            type="button"
-            class="segment flex-1 justify-center !px-2 !py-0.5 !text-xs"
-            :class="containerLayout === kind ? 'segment-selected' : 'ink-muted'"
-            @click="setLayout(kind, 'selection')"
-          >
-            {{ t(`deck.layout.${kind}`) }}
-          </button>
-        </div>
-        <div class="grid grid-cols-2 gap-1.5">
-          <label class="inspector-number">
-            <i class="i-jannchie-layout-columns h-3.5 w-3.5" :title="label('gap')" />
-            <input
-              type="number"
-              min="0"
-              max="512"
-              :value="pixels(common('gap'))"
-              :aria-label="label('gap')"
-              @change="
-                ($event) => {
-                  setStyle({ gap: `${numberOf($event)}px` })
-                  emit('seal')
-                }
-              "
-            />
-          </label>
-          <label class="inspector-number">
-            <i class="i-jannchie-fit-to-screen h-3.5 w-3.5" :title="label('padding')" />
-            <input
-              type="number"
-              min="0"
-              max="256"
-              :value="pixels(common('padding')?.split(' ')[0])"
-              :aria-label="label('padding')"
-              @change="
-                ($event) => {
-                  setStyle({ padding: `${numberOf($event)}px` })
-                  emit('seal')
-                }
-              "
-            />
-          </label>
-        </div>
-        <div class="mt-1.5 grid grid-cols-2 gap-1.5">
+      <section v-if="isContainer && single" class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("layout") }}</h3>
+        <DeckInspectorRow :label="label('layout')">
+          <div class="slides-segmented min-w-0 flex-1" role="group" :aria-label="label('layout')">
+            <button
+              v-for="kind in ['column', 'row', 'grid'] as const"
+              :key="kind"
+              type="button"
+              class="slides-segment"
+              :class="{ 'slides-segment-on': containerLayout === kind }"
+              :aria-pressed="containerLayout === kind"
+              @click="setLayout(kind, 'selection')"
+            >
+              {{ t(`deck.layout.${kind}`) }}
+            </button>
+          </div>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('spacing')">
+          <DeckNumberField
+            prefix="i-jannchie-layout-columns"
+            unit="px"
+            :min="0"
+            :max="512"
+            :label="label('gap')"
+            :value="pixels(common('gap'))"
+            @change="
+              ($event) => {
+                setStyle({ gap: `${numberOf($event)}px` })
+                emit('seal')
+              }
+            "
+          />
+          <DeckNumberField
+            prefix="i-jannchie-fit-to-screen"
+            unit="px"
+            :min="0"
+            :max="256"
+            :label="label('padding')"
+            :value="pixels(common('padding')?.split(' ')[0])"
+            @change="
+              ($event) => {
+                setStyle({ padding: `${numberOf($event)}px` })
+                emit('seal')
+              }
+            "
+          />
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('alignItems')">
           <select
-            class="field !py-1 !text-xs"
+            class="slides-field"
             :value="common('align-items') ?? ''"
             :aria-label="label('alignItems')"
             @change="
@@ -1094,11 +1243,13 @@ function setHidden(event: Event) {
               }
             "
           >
-            <option value="">{{ label("alignItems") }}</option>
+            <option value="">—</option>
             <option v-for="value in ALIGN_ITEMS" :key="value" :value="value">{{ value }}</option>
           </select>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('justify')">
           <select
-            class="field !py-1 !text-xs"
+            class="slides-field"
             :value="common('justify-content') ?? ''"
             :aria-label="label('justify')"
             @change="
@@ -1108,105 +1259,117 @@ function setHidden(event: Event) {
               }
             "
           >
-            <option value="">{{ label("justify") }}</option>
+            <option value="">—</option>
             <option v-for="value in JUSTIFY" :key="value" :value="value">{{ value }}</option>
           </select>
-        </div>
-        <input
-          v-if="containerLayout === 'grid'"
-          class="field mt-1.5 !py-1 !text-xs num"
-          :value="common('grid-template-columns') ?? ''"
-          :placeholder="label('columns')"
-          :aria-label="label('columns')"
-          @change="
-            ($event) => {
-              setStyle({ 'grid-template-columns': ($event.target as HTMLInputElement).value || undefined })
-              emit('seal')
-            }
-          "
-        />
+        </DeckInspectorRow>
+        <DeckInspectorRow v-if="containerLayout === 'grid'" :label="label('gridColumns')">
+          <input
+            class="slides-field slides-num"
+            :value="common('grid-template-columns') ?? ''"
+            :placeholder="label('columns')"
+            :aria-label="label('columns')"
+            @change="
+              ($event) => {
+                setStyle({ 'grid-template-columns': ($event.target as HTMLInputElement).value || undefined })
+                emit('seal')
+              }
+            "
+          />
+        </DeckInspectorRow>
       </section>
 
-      <section v-if="singleTag === 'img'" class="inspector-section">
-        <h3 class="inspector-heading">{{ label("image") }}</h3>
-        <button
-          type="button"
-          class="button-secondary w-full justify-center !py-1 !text-xs"
-          @click="imageInput?.click()"
-        >
+      <section v-if="singleTag === 'img'" class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("image") }}</h3>
+        <button type="button" class="slides-button w-full" @click="imageInput?.click()">
           <i class="i-jannchie-image h-3.5 w-3.5" aria-hidden="true" />
           {{ label("replace") }}
         </button>
         <input ref="imageInput" type="file" accept="image/*" class="hidden" @change="replaceImage" />
-        <div class="segmented mt-1.5 w-full">
-          <button
-            v-for="fit in ['cover', 'contain'] as const"
-            :key="fit"
-            type="button"
-            class="segment flex-1 justify-center !px-2 !py-0.5 !text-xs"
-            :class="(common('object-fit') ?? 'cover') === fit ? 'segment-selected' : 'ink-muted'"
-            @click="
-              () => {
-                setStyle({ 'object-fit': fit })
-                emit('seal')
-              }
-            "
+        <DeckInspectorRow :label="label('fit')">
+          <div class="slides-segmented min-w-0 flex-1" role="group" :aria-label="label('fit')">
+            <button
+              v-for="fit in ['cover', 'contain'] as const"
+              :key="fit"
+              type="button"
+              class="slides-segment"
+              :class="{ 'slides-segment-on': (common('object-fit') ?? 'cover') === fit }"
+              :aria-pressed="(common('object-fit') ?? 'cover') === fit"
+              @click="
+                () => {
+                  setStyle({ 'object-fit': fit })
+                  emit('seal')
+                }
+              "
+            >
+              {{ t(`deck.fit.${fit}`) }}
+            </button>
+          </div>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('altText')">
+          <input
+            class="slides-field"
+            :value="commonAttribute('alt') ?? ''"
+            :placeholder="label('alt')"
+            :aria-label="label('alt')"
+            @change="setAttributeAll('alt', ($event.target as HTMLInputElement).value)"
+          />
+        </DeckInspectorRow>
+      </section>
+
+      <section v-if="singleTag === 'x-shape'" class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("shape") }}</h3>
+        <DeckInspectorRow :label="label('shape')">
+          <select
+            class="slides-field"
+            :value="commonAttribute('kind')"
+            :aria-label="label('shape')"
+            @change="setAttributeAll('kind', ($event.target as HTMLSelectElement).value)"
           >
-            {{ t(`deck.fit.${fit}`) }}
-          </button>
-        </div>
-        <input
-          class="field mt-1.5 !py-1 !text-xs"
-          :value="commonAttribute('alt') ?? ''"
-          :placeholder="label('alt')"
-          :aria-label="label('alt')"
-          @change="setAttributeAll('alt', ($event.target as HTMLInputElement).value)"
-        />
+            <option v-for="kind in DECK_SHAPE_KINDS" :key="kind" :value="kind">
+              {{ t(`deck.shape.${kind}`) }}
+            </option>
+          </select>
+        </DeckInspectorRow>
       </section>
 
-      <section v-if="singleTag === 'x-shape'" class="inspector-section">
-        <h3 class="inspector-heading">{{ label("shape") }}</h3>
-        <select
-          class="field !py-1 !text-xs"
-          :value="commonAttribute('kind')"
-          @change="setAttributeAll('kind', ($event.target as HTMLSelectElement).value)"
-        >
-          <option v-for="kind in DECK_SHAPE_KINDS" :key="kind" :value="kind">
-            {{ t(`deck.shape.${kind}`) }}
-          </option>
-        </select>
-      </section>
-
-      <section v-if="singleTag === 'x-icon'" class="inspector-section">
-        <h3 class="inspector-heading">{{ label("icon") }}</h3>
-        <select
-          class="field !py-1 !text-xs"
-          :value="commonAttribute('name')"
-          @change="setAttributeAll('name', ($event.target as HTMLSelectElement).value)"
-        >
-          <option v-for="name in DECK_ICON_NAMES" :key="name" :value="name">{{ name }}</option>
-        </select>
-        <div class="mt-1.5">
+      <section v-if="singleTag === 'x-icon'" class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("icon") }}</h3>
+        <DeckInspectorRow :label="label('icon')">
+          <select
+            class="slides-field"
+            :value="commonAttribute('name')"
+            :aria-label="label('icon')"
+            @change="setAttributeAll('name', ($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="name in DECK_ICON_NAMES" :key="name" :value="name">{{ name }}</option>
+          </select>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('color')">
           <DeckColorField
+            :placeholder="unset"
             :value="common('color')"
             :label="label('color')"
             @change="(value) => setStyle({ color: value }, 'color')"
             @done="emit('seal')"
           />
-        </div>
+        </DeckInspectorRow>
       </section>
 
-      <section v-if="isConnector && single" class="inspector-section">
-        <h3 class="inspector-heading">{{ label("connector") }}</h3>
-        <DeckColorField
-          :value="common('color')"
-          :label="label('color')"
-          @change="(value) => setStyle({ color: value }, 'color')"
-          @done="emit('seal')"
-        />
-        <div class="mt-1.5 grid grid-cols-2 gap-1.5">
+      <section v-if="isConnector && single" class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("connector") }}</h3>
+        <DeckInspectorRow :label="label('color')">
+          <DeckColorField
+            :placeholder="unset"
+            :value="common('color')"
+            :label="label('color')"
+            @change="(value) => setStyle({ color: value }, 'color')"
+            @done="emit('seal')"
+          />
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('head')">
           <select
-            class="field !py-1 !text-xs"
+            class="slides-field"
             :value="commonAttribute('head') ?? 'end'"
             :aria-label="label('head')"
             @change="setAttributeAll('head', ($event.target as HTMLSelectElement).value)"
@@ -1215,8 +1378,10 @@ function setHidden(event: Event) {
               {{ t(`deck.head.${head}`) }}
             </option>
           </select>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('route')">
           <select
-            class="field !py-1 !text-xs"
+            class="slides-field"
             :value="commonAttribute('route') ?? 'straight'"
             :aria-label="label('route')"
             @change="setAttributeAll('route', ($event.target as HTMLSelectElement).value)"
@@ -1225,72 +1390,75 @@ function setHidden(event: Event) {
               {{ t(`deck.route.${route}`) }}
             </option>
           </select>
-        </div>
-        <div class="mt-1.5 grid grid-cols-[4.5rem_1fr] gap-1.5">
-          <label class="inspector-number">
-            <i class="i-jannchie-square h-3.5 w-3.5" :title="label('borderWidth')" />
-            <input
-              type="number"
-              min="1"
-              max="32"
-              :value="strokeOf(single.node.style.border)?.width ?? 3"
-              :aria-label="label('borderWidth')"
-              @change="setConnectorStroke({ width: numberOf($event) ?? 3 })"
-            />
-          </label>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('borderWidth')">
+          <DeckNumberField
+            unit="px"
+            :min="1"
+            :max="32"
+            :label="label('borderWidth')"
+            :value="strokeOf(single.node.style.border)?.width ?? 3"
+            @change="setConnectorStroke({ width: numberOf($event) ?? 3 })"
+          />
           <select
-            class="field !py-1 !text-xs"
+            class="slides-field min-w-0 flex-1"
             :value="strokeOf(single.node.style.border)?.style ?? 'solid'"
             :aria-label="label('borderStyle')"
+            :title="label('borderStyle')"
             @change="setConnectorStroke({ style: ($event.target as HTMLSelectElement).value })"
           >
             <option v-for="style in ['solid', 'dashed', 'dotted'] as const" :key="style" :value="style">
               {{ t(`deck.stroke.${style}`) }}
             </option>
           </select>
-        </div>
+        </DeckInspectorRow>
       </section>
 
-      <section v-if="single && pinned" class="inspector-section">
-        <h3 class="inspector-heading">{{ label("build") }}</h3>
-        <select
-          class="field !py-1 !text-xs"
-          :value="(commonAttribute('data-build-in') ?? '').split(' ')[0] || ''"
-          @change="setAttributeAll('data-build-in', ($event.target as HTMLSelectElement).value || undefined)"
-        >
-          <option value="">{{ t("deck.build.none") }}</option>
-          <option v-for="build in BUILDS" :key="build" :value="build">
-            {{ t(`deck.build.${build}`) }}
-          </option>
-        </select>
-        <input
-          class="field mt-1.5 !py-1 !text-xs num"
-          :value="commonAttribute('id') ?? ''"
-          :placeholder="label('magicId')"
-          :aria-label="label('magicId')"
-          @change="
-            setAttributeAll(
-              'id',
-              ($event.target as HTMLInputElement).value.trim().replace(/[^\w-]/g, '-') || undefined,
-            )
-          "
-        />
+      <section v-if="single && pinned" class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("build") }}</h3>
+        <DeckInspectorRow :label="label('build')">
+          <select
+            class="slides-field"
+            :value="(commonAttribute('data-build-in') ?? '').split(' ')[0] || ''"
+            :aria-label="label('build')"
+            @change="
+              setAttributeAll('data-build-in', ($event.target as HTMLSelectElement).value || undefined)
+            "
+          >
+            <option value="">{{ t("deck.build.none") }}</option>
+            <option v-for="build in BUILDS" :key="build" :value="build">
+              {{ t(`deck.build.${build}`) }}
+            </option>
+          </select>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('magicId')">
+          <input
+            class="slides-field slides-num"
+            :value="commonAttribute('id') ?? ''"
+            :aria-label="label('magicId')"
+            @change="
+              setAttributeAll(
+                'id',
+                ($event.target as HTMLInputElement).value.trim().replace(/[^\w-]/g, '-') || undefined,
+              )
+            "
+          />
+        </DeckInspectorRow>
       </section>
 
-      <details v-if="single" class="inspector-section">
-        <summary class="inspector-heading cursor-pointer">{{ label("style") }}</summary>
+      <details v-if="single" class="slides-inspector-section group">
+        <summary class="flex cursor-pointer list-none items-center gap-1.5 slides-inspector-heading">
+          <i class="i-jannchie-chevron-right slides-chevron group-open:rotate-90" aria-hidden="true" />
+          {{ label("style") }}
+        </summary>
         <textarea
           v-model="styleText"
-          class="field mt-1.5 h-32 resize-y !text-[11px] num"
+          class="slides-field h-32 py-1.5 text-[11px] slides-num"
           spellcheck="false"
           :aria-label="label('style')"
         />
-        <p v-for="line in styleDropped" :key="line" class="mt-1 ink-warning">{{ line }}</p>
-        <button
-          type="button"
-          class="button-secondary mt-1.5 w-full justify-center !py-1 !text-xs"
-          @click="applyStyleText"
-        >
+        <p v-for="line in styleDropped" :key="line" class="slides-warning">{{ line }}</p>
+        <button type="button" class="slides-button w-full" @click="applyStyleText">
           {{ label("apply") }}
         </button>
       </details>
@@ -1298,90 +1466,93 @@ function setHidden(event: Event) {
 
     <!-- Nothing selected: the slide, and the deck. -->
     <template v-else-if="slide">
-      <section class="inspector-section">
-        <h3 class="inspector-heading">{{ label("slide") }}</h3>
-        <div class="segmented mb-1.5 w-full">
-          <button
-            v-for="kind in ['solid', 'gradient'] as const"
-            :key="kind"
-            type="button"
-            class="segment flex-1 justify-center !px-2 !py-0.5 !text-xs"
-            :class="
-              (slide.style.background?.includes('gradient(') ? 'gradient' : 'solid') === kind
-                ? 'segment-selected'
-                : 'ink-muted'
+      <section class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("slide") }}</h3>
+        <DeckInspectorRow :label="label('background')">
+          <div class="slides-segmented min-w-0 flex-1" role="group" :aria-label="label('background')">
+            <button
+              v-for="kind in ['solid', 'gradient'] as const"
+              :key="kind"
+              type="button"
+              class="slides-segment"
+              :class="{ 'slides-segment-on': slideFillKind === kind }"
+              :aria-pressed="slideFillKind === kind"
+              @click="setSlideFill(kind)"
+            >
+              {{ label(kind) }}
+            </button>
+          </div>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('color')">
+          <DeckColorField
+            :placeholder="unset"
+            v-if="slideFillKind === 'solid'"
+            :value="slide.style.background"
+            :label="label('background')"
+            @change="(value) => setSlideStyle({ background: value ?? '#ffffff' }, 'background')"
+            @done="emit('seal')"
+          />
+          <input
+            v-else
+            class="slides-field slides-num"
+            :value="slide.style.background"
+            :aria-label="label('background')"
+            @change="
+              ($event) => {
+                setSlideStyle({ background: ($event.target as HTMLInputElement).value })
+                emit('seal')
+              }
             "
-            @click="setSlideFill(kind)"
-          >
-            {{ label(kind) }}
-          </button>
-        </div>
-        <DeckColorField
-          v-if="!slide.style.background?.includes('gradient(')"
-          :value="slide.style.background"
-          :label="label('background')"
-          @change="(value) => setSlideStyle({ background: value ?? '#ffffff' }, 'background')"
-          @done="emit('seal')"
-        />
-        <input
-          v-else
-          class="field !py-1 !text-xs num"
-          :value="slide.style.background"
-          :aria-label="label('background')"
-          @change="
-            ($event) => {
-              setSlideStyle({ background: ($event.target as HTMLInputElement).value })
-              emit('seal')
-            }
-          "
-        />
-        <div class="mt-1.5 segmented w-full">
-          <button
-            v-for="kind in ['column', 'row', 'grid'] as const"
-            :key="kind"
-            type="button"
-            class="segment flex-1 justify-center !px-2 !py-0.5 !text-xs"
-            :class="layoutOf(slide.style) === kind ? 'segment-selected' : 'ink-muted'"
-            @click="setLayout(kind, 'slide')"
-          >
-            {{ t(`deck.layout.${kind}`) }}
-          </button>
-        </div>
-        <div class="mt-1.5 grid grid-cols-2 gap-1.5">
-          <label class="inspector-number">
-            <i class="i-jannchie-fit-to-screen h-3.5 w-3.5" :title="label('padding')" />
-            <input
-              type="number"
-              min="0"
-              max="256"
-              :value="pixels(slide.style.padding?.split(' ')[0])"
-              :aria-label="label('padding')"
-              @change="
-                ($event) => {
-                  setSlideStyle({ padding: `${numberOf($event)}px` })
-                  emit('seal')
-                }
-              "
-            />
-          </label>
-          <label class="inspector-number">
-            <i class="i-jannchie-layout-columns h-3.5 w-3.5" :title="label('gap')" />
-            <input
-              type="number"
-              min="0"
-              max="512"
-              :value="pixels(slide.style.gap)"
-              :aria-label="label('gap')"
-              @change="
-                ($event) => {
-                  setSlideStyle({ gap: `${numberOf($event)}px` })
-                  emit('seal')
-                }
-              "
-            />
-          </label>
+          />
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('layout')">
+          <div class="slides-segmented min-w-0 flex-1" role="group" :aria-label="label('layout')">
+            <button
+              v-for="kind in ['column', 'row', 'grid'] as const"
+              :key="kind"
+              type="button"
+              class="slides-segment"
+              :class="{ 'slides-segment-on': layoutOf(slide.style) === kind }"
+              :aria-pressed="layoutOf(slide.style) === kind"
+              @click="setLayout(kind, 'slide')"
+            >
+              {{ t(`deck.layout.${kind}`) }}
+            </button>
+          </div>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('spacing')">
+          <DeckNumberField
+            prefix="i-jannchie-fit-to-screen"
+            unit="px"
+            :min="0"
+            :max="256"
+            :label="label('padding')"
+            :value="pixels(slide.style.padding?.split(' ')[0])"
+            @change="
+              ($event) => {
+                setSlideStyle({ padding: `${numberOf($event)}px` })
+                emit('seal')
+              }
+            "
+          />
+          <DeckNumberField
+            prefix="i-jannchie-layout-columns"
+            unit="px"
+            :min="0"
+            :max="512"
+            :label="label('gap')"
+            :value="pixels(slide.style.gap)"
+            @change="
+              ($event) => {
+                setSlideStyle({ gap: `${numberOf($event)}px` })
+                emit('seal')
+              }
+            "
+          />
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('alignItems')">
           <select
-            class="field !py-1 !text-xs"
+            class="slides-field"
             :value="slide.style['align-items'] ?? ''"
             :aria-label="label('alignItems')"
             @change="
@@ -1391,11 +1562,13 @@ function setHidden(event: Event) {
               }
             "
           >
-            <option value="">{{ label("alignItems") }}</option>
+            <option value="">—</option>
             <option v-for="value in ALIGN_ITEMS" :key="value" :value="value">{{ value }}</option>
           </select>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('justify')">
           <select
-            class="field !py-1 !text-xs"
+            class="slides-field"
             :value="slide.style['justify-content'] ?? ''"
             :aria-label="label('justify')"
             @change="
@@ -1405,15 +1578,15 @@ function setHidden(event: Event) {
               }
             "
           >
-            <option value="">{{ label("justify") }}</option>
+            <option value="">—</option>
             <option v-for="value in JUSTIFY" :key="value" :value="value">{{ value }}</option>
           </select>
-        </div>
-        <label class="mt-1.5 flex items-center gap-2">
-          <span class="w-20 ink-muted">{{ label("transition") }}</span>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('transition')">
           <select
-            class="field min-w-0 flex-1 !py-1 !text-xs"
+            class="slides-field"
             :value="slide.transition ?? 'none'"
+            :aria-label="label('transition')"
             @change="setTransition(($event.target as HTMLSelectElement).value)"
           >
             <option value="none">{{ t("deck.transition.none") }}</option>
@@ -1421,35 +1594,42 @@ function setHidden(event: Event) {
               {{ t(`deck.transition.${transition}`) }}
             </option>
           </select>
-        </label>
-        <input
-          class="field mt-1.5 !py-1 !text-xs"
-          :value="slide.section ?? ''"
-          :placeholder="label('sectionTitle')"
-          :aria-label="label('sectionTitle')"
-          @change="setSlideSection"
-        />
-        <label class="mt-1.5 flex items-center gap-2">
-          <input type="checkbox" :checked="slide.hidden === true" @change="setHidden" />
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('section')">
+          <input
+            class="slides-field"
+            :value="slide.section ?? ''"
+            :placeholder="label('sectionTitle')"
+            :aria-label="label('sectionTitle')"
+            @change="setSlideSection"
+          />
+        </DeckInspectorRow>
+        <label
+          class="min-h-[var(--slides-control-height)] flex cursor-pointer items-center gap-2 slides-ink-2"
+        >
+          <input type="checkbox" class="h-3.5 w-3.5" :checked="slide.hidden === true" @change="setHidden" />
           <span>{{ label("hidden") }}</span>
         </label>
       </section>
 
-      <section class="inspector-section">
-        <h3 class="inspector-heading">{{ label("deck") }}</h3>
-        <select
-          class="field !py-1 !text-xs"
-          :value="firstFamily(deck.style['font-family']) ?? ''"
-          :aria-label="label('font')"
-          @change="setFamily(($event.target as HTMLSelectElement).value, 'deck')"
-        >
-          <option value="" disabled>{{ label("font") }}</option>
-          <option v-for="family in fontOptions" :key="family" :value="firstFamily(family)">
-            {{ firstFamily(family) }}
-          </option>
-        </select>
-        <div class="mt-1.5">
+      <section class="slides-inspector-section">
+        <h3 class="slides-inspector-heading">{{ label("deck") }}</h3>
+        <DeckInspectorRow :label="label('font')">
+          <select
+            class="slides-field"
+            :value="firstFamily(deck.style['font-family']) ?? ''"
+            :aria-label="label('font')"
+            @change="setFamily(($event.target as HTMLSelectElement).value, 'deck')"
+          >
+            <option value="" disabled>{{ label("font") }}</option>
+            <option v-for="family in fontOptions" :key="family" :value="firstFamily(family)">
+              {{ firstFamily(family) }}
+            </option>
+          </select>
+        </DeckInspectorRow>
+        <DeckInspectorRow :label="label('color')">
           <DeckColorField
+            :placeholder="unset"
             :value="deck.style.color"
             :label="label('color')"
             @change="
@@ -1458,109 +1638,69 @@ function setHidden(event: Event) {
             "
             @done="emit('seal')"
           />
+        </DeckInspectorRow>
+        <div class="slides-inspector-row !items-start">
+          <span class="slides-inspector-label leading-[var(--slides-control-height)]">{{
+            label("fonts")
+          }}</span>
+          <div class="min-w-0 flex flex-col gap-1.5">
+            <ul v-if="deck.fontLinks.length > 0" class="flex flex-col">
+              <li
+                v-for="href in deck.fontLinks"
+                :key="href"
+                class="h-[var(--slides-control-height)] flex items-center gap-1 rounded-[var(--slides-radius)] pl-2 slides-hover"
+              >
+                <span class="min-w-0 flex-1 truncate">{{ fontName(href) }}</span>
+                <button
+                  type="button"
+                  class="slides-icon-button !h-6 !w-6"
+                  :title="t('deck.removeFont')"
+                  :aria-label="t('deck.removeFont')"
+                  @click="removeFont(href)"
+                >
+                  <i class="i-jannchie-x h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </li>
+            </ul>
+            <form class="flex gap-1.5" @submit.prevent="addFont">
+              <input
+                v-model="newFont"
+                class="slides-field min-w-0 flex-1"
+                :placeholder="label('addFont')"
+                :aria-label="label('addFont')"
+              />
+              <button
+                type="submit"
+                class="slides-button w-[var(--slides-control-height)] !px-0"
+                :aria-label="label('addFont')"
+                :disabled="newFont.trim() === ''"
+              >
+                <i class="i-jannchie-plus h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </form>
+          </div>
         </div>
-        <h4 class="mb-1 mt-2.5 ink-muted">{{ label("fonts") }}</h4>
-        <ul class="m-0 flex list-none flex-col gap-0.5 p-0">
-          <li v-for="href in deck.fontLinks" :key="href" class="flex items-center gap-1">
-            <span class="min-w-0 flex-1 truncate">{{ fontName(href) }}</span>
-            <button
-              type="button"
-              class="h-5 w-5 flex items-center justify-center rounded ink-soft surface-hover kbd-ring"
-              :aria-label="t('deck.removeFont')"
-              @click="removeFont(href)"
-            >
-              <i class="i-jannchie-x h-3 w-3" aria-hidden="true" />
-            </button>
-          </li>
-        </ul>
-        <form class="mt-1 flex gap-1" @submit.prevent="addFont">
-          <input
-            v-model="newFont"
-            class="field min-w-0 flex-1 !py-1 !text-xs"
-            :placeholder="label('addFont')"
-            :aria-label="label('addFont')"
-          />
-          <button
-            type="submit"
-            class="button-secondary !px-2 !py-1 !text-xs"
-            :disabled="newFont.trim() === ''"
-          >
-            <i class="i-jannchie-plus h-3.5 w-3.5" aria-hidden="true" />
-          </button>
-        </form>
       </section>
 
       <details
-        class="inspector-section"
+        class="slides-inspector-section group"
         :open="markupOpen"
         @toggle="markupOpen = ($event.target as HTMLDetailsElement).open"
       >
-        <summary class="inspector-heading cursor-pointer">{{ label("slideHtml") }}</summary>
+        <summary class="flex cursor-pointer list-none items-center gap-1.5 slides-inspector-heading">
+          <i class="i-jannchie-chevron-right slides-chevron group-open:rotate-90" aria-hidden="true" />
+          {{ label("slideHtml") }}
+        </summary>
         <textarea
           v-model="slideMarkup"
-          class="field mt-1.5 h-56 resize-y !text-[11px] num"
+          class="slides-field h-56 py-1.5 text-[11px] slides-num"
           spellcheck="false"
           :aria-label="label('slideHtml')"
         />
-        <button
-          type="button"
-          class="button-secondary mt-1.5 w-full justify-center !py-1 !text-xs"
-          @click="applySlideMarkup"
-        >
+        <button type="button" class="slides-button w-full" @click="applySlideMarkup">
           {{ label("apply") }}
         </button>
       </details>
     </template>
   </aside>
 </template>
-
-<style scoped>
-.inspector-section {
-  padding: 0.625rem 0.75rem;
-  border-bottom: 1px solid rgb(0 0 0 / 0.06);
-}
-
-:global([data-scheme="dark"]) .inspector-section {
-  border-bottom-color: rgb(255 255 255 / 0.06);
-}
-
-.inspector-heading {
-  margin: 0 0 0.5rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  opacity: 0.7;
-}
-
-.inspector-number {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  border-radius: 0.5rem;
-  padding: 0 0.375rem;
-  background: rgb(0 0 0 / 0.04);
-}
-
-:global([data-scheme="dark"]) .inspector-number {
-  background: rgb(255 255 255 / 0.05);
-}
-
-.inspector-number > span,
-.inspector-number > i {
-  flex: none;
-  opacity: 0.6;
-  font-size: 0.7rem;
-}
-
-.inspector-number > input {
-  min-width: 0;
-  flex: 1;
-  border: 0;
-  background: transparent;
-  padding: 0.3rem 0;
-  font: inherit;
-  font-variant-numeric: tabular-nums;
-  outline: none;
-}
-</style>

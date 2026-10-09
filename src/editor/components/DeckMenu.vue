@@ -58,8 +58,8 @@ function keepFocus(event: MouseEvent) {
   <div ref="reference" class="inline-flex" @keydown.esc.stop="close">
     <button
       type="button"
-      class="h-7 flex items-center gap-1 rounded-md px-1.5 text-xs surface-hover kbd-ring disabled:opacity-35"
-      :class="{ 'surface-strong': open }"
+      class="slides-tool"
+      :class="{ 'slides-pressed': open }"
       :title="label"
       :aria-label="label"
       aria-haspopup="true"
@@ -70,13 +70,13 @@ function keepFocus(event: MouseEvent) {
     >
       <i :class="icon" class="h-4 w-4" aria-hidden="true" />
       <span v-if="showLabel">{{ label }}</span>
-      <i class="i-jannchie-chevron-down h-3 w-3 ink-soft" aria-hidden="true" />
+      <i class="i-jannchie-chevron-down h-3 w-3 slides-muted" aria-hidden="true" />
     </button>
     <Teleport :to="floatingHost">
       <div
         v-if="open"
         ref="floating"
-        class="slides-editor popover max-h-[var(--floating-max-height)] overflow-y-auto"
+        class="slides-editor slides-popover max-h-[var(--floating-max-height)] overflow-y-auto"
         :style="floatingStyles"
         @mousedown="keepFocus"
       >
