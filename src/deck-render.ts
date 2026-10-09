@@ -64,11 +64,15 @@ export type DeckRenderOptions = {
  * The styles every slide starts from, under `.deck-slide`. A tag's defaults
  * live here and nowhere else: the page, the stage and the thumbnails all load
  * this one sheet, so a `<p>` is the same size in each.
+ *
+ * It also pins what a host page may have set on every element and the subset
+ * cannot say: a host that draws its corners as squircles (`corner-shape`) would
+ * otherwise turn an ellipse on a slide into a rounded square.
  */
 export const DECK_BASE_CSS = `
 .deck-root{font-family:system-ui,-apple-system,"Segoe UI","Noto Sans","PingFang SC","Hiragino Sans",sans-serif;color:#1d1d1f;color-scheme:light}
 .deck-slide{position:relative;width:${DECK_WIDTH}px;height:${DECK_HEIGHT}px;overflow:hidden;display:flex;flex-direction:column;background:#ffffff;font-size:32px;line-height:1.4;overflow-wrap:break-word;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-.deck-slide,.deck-slide *{margin:0;box-sizing:border-box}
+.deck-slide,.deck-slide *{margin:0;box-sizing:border-box;corner-shape:round}
 .deck-slide div{display:flex;flex-direction:column;min-width:0}
 .deck-slide h1{font-size:96px;font-weight:600;line-height:1.1}
 .deck-slide h2{font-size:64px;font-weight:600;line-height:1.15}
