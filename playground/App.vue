@@ -188,7 +188,7 @@ function reset() {
           <button type="button" class="ghost" @click="reset">
             <i class="i-jannchie-reset icon" aria-hidden="true" /> Reset
           </button>
-          <a class="ghost" href="https://github.com/jannchie/slides" target="_blank" rel="noreferrer">
+          <a class="ghost" href="https://github.com/Jannchie/slides" target="_blank" rel="noreferrer">
             <i class="i-jannchie-github icon" aria-hidden="true" />
             <span class="sr-only">GitHub</span>
           </a>

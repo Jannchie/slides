@@ -6,7 +6,7 @@
   "author": "Jianqi Pan <jannchie@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jannchie/slides.git"
+    "url": "git+https://github.com/Jannchie/slides.git"
   },
   "files": [
     "dist",
