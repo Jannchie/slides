@@ -197,5 +197,10 @@
   "deck.menu.copy": "复制",
   "deck.menu.paste": "粘贴",
   "deck.menu.selectAll": "全选",
-  "deck.menu.clipboardFailed": "无法访问剪贴板：{error}"
+  "deck.menu.clipboardFailed": "无法访问剪贴板：{error}",
+  "deck.zoom.label": "缩放",
+  "deck.zoom.in": "放大",
+  "deck.zoom.out": "缩小",
+  "deck.zoom.fit": "适应窗口",
+  "deck.zoom.actual": "实际大小"
 }

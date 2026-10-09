@@ -1150,6 +1150,21 @@ function onKeydown(event: KeyboardEvent) {
     return
   }
 
+  // Zoom: the keys a browser zooms the page with, zooming the slide instead.
+  if (mod && (key === "=" || key === "+" || key === "-" || key === "0")) {
+    event.preventDefault()
+
+    if (key === "0") {
+      void stage.value?.zoomFit()
+    } else if (key === "-") {
+      stage.value?.zoomOut()
+    } else {
+      stage.value?.zoomIn()
+    }
+
+    return
+  }
+
   if (mod && key === "a") {
     event.preventDefault()
     selectAll()
@@ -1774,26 +1789,60 @@ const hasSelection = computed(() => selection.value.length > 0)
             {{ t("deck.dropImages") }}
           </span>
         </div>
-        <DeckStage
-          ref="stage"
-          class="min-h-0 flex-1"
-          :deck="deck"
-          :slide-index="slideIndex"
-          :selection="selection"
-          :scope="scope"
-          :editing-path="editingPath"
-          :caret-at="caret"
-          :editable="editable"
-          :resolve-asset="resolveAsset"
-          @select="select"
-          @menu="openStageMenu"
-          @update="updateChildren"
-          @seal="history.seal()"
-          @edit="(path, at) => (path === undefined ? finishEditing() : startEditing(path, at))"
-          @text-change="onTextChange"
-          @text-done="finishEditing"
-          @text-key="onTextKey"
-        />
+        <div class="relative min-h-0 flex-1">
+          <DeckStage
+            ref="stage"
+            class="h-full"
+            :deck="deck"
+            :slide-index="slideIndex"
+            :selection="selection"
+            :scope="scope"
+            :editing-path="editingPath"
+            :caret-at="caret"
+            :editable="editable"
+            :resolve-asset="resolveAsset"
+            @select="select"
+            @menu="openStageMenu"
+            @update="updateChildren"
+            @seal="history.seal()"
+            @edit="(path, at) => (path === undefined ? finishEditing() : startEditing(path, at))"
+            @text-change="onTextChange"
+            @text-done="finishEditing"
+            @text-key="onTextKey"
+          />
+          <div
+            class="slides-zoom absolute bottom-3 right-5 z-10 flex items-center gap-0.5 rounded-[var(--slides-radius-lg)] bg-slides-panel p-0.5 shadow-[var(--slides-shadow)]"
+            role="group"
+            :aria-label="t('deck.zoom.label')"
+          >
+            <button
+              type="button"
+              class="slides-icon-button !h-7 !w-7"
+              :title="`${t('deck.zoom.out')} (${MOD}-)`"
+              :aria-label="t('deck.zoom.out')"
+              @click="stage?.zoomOut()"
+            >
+              <i class="i-jannchie-minus h-4 w-4" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              class="slides-tool !h-7 min-w-13 justify-center slides-num"
+              :title="`${stage?.fitted ? t('deck.zoom.actual') : t('deck.zoom.fit')} (${MOD}0)`"
+              @click="stage?.fitted ? stage?.zoomActual() : stage?.zoomFit()"
+            >
+              {{ Math.round((stage?.scale ?? 1) * 100) }}%
+            </button>
+            <button
+              type="button"
+              class="slides-icon-button !h-7 !w-7"
+              :title="`${t('deck.zoom.in')} (${MOD}=)`"
+              :aria-label="t('deck.zoom.in')"
+              @click="stage?.zoomIn()"
+            >
+              <i class="i-jannchie-plus h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
 
         <div class="slides-notes border-t border-slides-line bg-slides-panel">
           <button

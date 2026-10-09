@@ -197,5 +197,10 @@
   "deck.menu.copy": "Copy",
   "deck.menu.paste": "Paste",
   "deck.menu.selectAll": "Select all",
-  "deck.menu.clipboardFailed": "The clipboard could not be reached: {error}"
+  "deck.menu.clipboardFailed": "The clipboard could not be reached: {error}",
+  "deck.zoom.label": "Zoom",
+  "deck.zoom.in": "Zoom in",
+  "deck.zoom.out": "Zoom out",
+  "deck.zoom.fit": "Fit to window",
+  "deck.zoom.actual": "Actual size"
 }

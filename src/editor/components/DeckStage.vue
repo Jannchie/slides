@@ -112,12 +112,30 @@ const frame = useTemplateRef<HTMLElement>("frame")
 const room = ref({ width: 0, height: 0 })
 const PADDING = 24
 
-const scale = computed(() => {
+/** The scale at which the whole slide fits the room. */
+const fitScale = computed(() => {
   const width = Math.max(room.value.width - PADDING * 2, 40)
   const height = Math.max(room.value.height - PADDING * 2, 40)
 
   return Math.min(width / DECK_WIDTH, height / DECK_HEIGHT)
 })
+
+/** What the reader zoomed to, or nothing while the slide fits the room. */
+const zoom = ref<number>()
+const MIN_ZOOM = 0.1
+const MAX_ZOOM = 4
+/** The stops the zoom buttons and keys step through. */
+const ZOOM_STOPS = [0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4]
+
+const scale = computed(() => zoom.value ?? fitScale.value)
+
+/**
+ * Where the slide sits: centred while it is smaller than the room, and
+ * otherwise a padding in from the edge of a room that now scrolls.
+ */
+function offset(size: number, room: number) {
+  return size + PADDING * 2 <= room ? (room - size) / 2 : PADDING
+}
 
 const frameStyle = computed(() => {
   const width = DECK_WIDTH * scale.value
@@ -126,10 +144,131 @@ const frameStyle = computed(() => {
   return {
     width: `${width}px`,
     height: `${height}px`,
-    left: `${Math.max((room.value.width - width) / 2, 0)}px`,
-    top: `${Math.max((room.value.height - height) / 2, 0)}px`,
+    left: `${offset(width, room.value.width)}px`,
+    top: `${offset(height, room.value.height)}px`,
   }
 })
+
+/** The area the room scrolls over: the slide and its padding on every side. */
+const scrollArea = computed(() => ({
+  width: `${DECK_WIDTH * scale.value + PADDING * 2}px`,
+  height: `${DECK_HEIGHT * scale.value + PADDING * 2}px`,
+}))
+
+/**
+ * Zoom to `next` (nothing: back to the fit), keeping the point of the slide
+ * under `client` where it is on screen — the pointer for a wheel, the middle
+ * of the room for a key or a button.
+ */
+async function zoomTo(next: number | undefined, client?: Point) {
+  const view = viewport.value
+  const before = frame.value?.getBoundingClientRect()
+
+  if (view === null || before === undefined) {
+    return
+  }
+
+  const bounds = view.getBoundingClientRect()
+  const at = client ?? { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 }
+  const anchor = { x: (at.x - before.left) / scale.value, y: (at.y - before.top) / scale.value }
+
+  zoom.value = next === undefined ? undefined : Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next))
+  await nextTick()
+
+  const after = frame.value?.getBoundingClientRect()
+
+  if (after !== undefined) {
+    view.scrollLeft += after.left + anchor.x * scale.value - at.x
+    view.scrollTop += after.top + anchor.y * scale.value - at.y
+  }
+
+  remeasure()
+}
+
+function zoomStep(direction: 1 | -1) {
+  const current = scale.value
+  const stop =
+    direction > 0
+      ? ZOOM_STOPS.find((candidate) => candidate > current * 1.01)
+      : [...ZOOM_STOPS].reverse().find((candidate) => candidate < current * 0.99)
+
+  void zoomTo(stop ?? (direction > 0 ? MAX_ZOOM : MIN_ZOOM))
+}
+
+/** Ctrl or ⌘ with the wheel — which is also what a trackpad's pinch sends. */
+function onWheel(event: WheelEvent) {
+  if (!event.ctrlKey && !event.metaKey) {
+    return
+  }
+
+  event.preventDefault()
+  void zoomTo(scale.value * Math.exp(-event.deltaY * 0.002), { x: event.clientX, y: event.clientY })
+}
+
+// ---------------------------------------------------------------------------
+// Panning: Space held, or the middle button
+// ---------------------------------------------------------------------------
+
+const spaceHeld = ref(false)
+const panning = ref(false)
+let pan: { pointer: number; client: Point; scroll: Point } | undefined
+
+function isTyping(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    target.closest("input, textarea, select, [contenteditable='true']") !== null
+  )
+}
+
+function onSpace(event: KeyboardEvent) {
+  if (event.code !== "Space" || props.editingPath !== undefined || isTyping(event.target)) {
+    return
+  }
+
+  if (event.type === "keyup") {
+    spaceHeld.value = false
+    return
+  }
+
+  // Only while the pointer is over this room: the rest of the page keeps its space bar.
+  if (viewport.value?.matches(":hover") === true) {
+    event.preventDefault()
+    spaceHeld.value = true
+  }
+}
+
+/** Start a pan when the press is one — Space held, or the middle button — and say whether it was. */
+function startPan(event: PointerEvent) {
+  if (!(spaceHeld.value || event.button === 1) || viewport.value === null) {
+    return false
+  }
+
+  event.preventDefault()
+  event.stopPropagation()
+  pan = {
+    pointer: event.pointerId,
+    client: { x: event.clientX, y: event.clientY },
+    scroll: { x: viewport.value.scrollLeft, y: viewport.value.scrollTop },
+  }
+  panning.value = true
+  viewport.value.setPointerCapture(event.pointerId)
+  return true
+}
+
+function onPanMove(event: PointerEvent) {
+  if (pan !== undefined && event.pointerId === pan.pointer && viewport.value !== null) {
+    viewport.value.scrollLeft = pan.scroll.x - (event.clientX - pan.client.x)
+    viewport.value.scrollTop = pan.scroll.y - (event.clientY - pan.client.y)
+  }
+}
+
+function endPan(event: PointerEvent) {
+  if (pan !== undefined && event.pointerId === pan.pointer) {
+    viewport.value?.releasePointerCapture(event.pointerId)
+    pan = undefined
+    panning.value = false
+  }
+}
 
 let resizeObserver: ResizeObserver | undefined
 
@@ -148,8 +287,13 @@ onMounted(() => {
   void document.fonts?.ready.then(() => remeasure())
 })
 
+window.addEventListener("keydown", onSpace)
+window.addEventListener("keyup", onSpace)
+
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  window.removeEventListener("keydown", onSpace)
+  window.removeEventListener("keyup", onSpace)
 
   if (moveFrame !== undefined) {
     cancelAnimationFrame(moveFrame)
@@ -1227,14 +1371,27 @@ defineExpose({
   group,
   ungroup,
   slidePoint,
+  /** The scale the slide is drawn at now, and whether that is the fit. */
+  scale,
+  fitted: computed(() => zoom.value === undefined),
+  zoomIn: () => zoomStep(1),
+  zoomOut: () => zoomStep(-1),
+  zoomFit: () => zoomTo(undefined),
+  zoomActual: () => zoomTo(1),
 })
 </script>
 
 <template>
   <div
     ref="viewport"
-    class="relative h-full w-full overflow-hidden"
+    class="slides-stage relative h-full w-full overflow-auto [scrollbar-color:var(--slides-line-strong)_transparent] [scrollbar-width:thin]"
+    :class="{ 'cursor-grab': spaceHeld && !panning, 'cursor-grabbing': panning }"
     v-bind="$attrs"
+    @wheel="onWheel"
+    @pointerdown.capture="startPan"
+    @pointermove="onPanMove"
+    @pointerup="endPan"
+    @pointercancel="endPan"
     @pointerdown.self="emit('select', [], [])"
     @contextmenu.self.prevent="
       (event: MouseEvent) => {
@@ -1243,6 +1400,7 @@ defineExpose({
       }
     "
   >
+    <div class="pointer-events-none absolute left-0 top-0" :style="scrollArea" aria-hidden="true" />
     <div
       v-if="slide"
       ref="frame"
