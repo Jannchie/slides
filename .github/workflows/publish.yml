@@ -4,7 +4,8 @@
 # only come from this workflow in this repository. Provenance is attached.
 #
 # The trust is set once, after the first publish:
-#   npm trust github @jannchie/slides --file publish.yml --repo jannchie/slides --allow-publish
+#   npm trust github @jannchie/slides --file publish.yml --repo Jannchie/slides --allow-publish
+# The repository is matched exactly, case and all: it is `Jannchie`, as GitHub spells the owner.
 #
 # Release flow:
 #   1. bump "version" in package.json and commit
