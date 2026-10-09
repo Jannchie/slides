@@ -6,15 +6,16 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap">
 </head>
 <body data-theme="minimal-light" style="font-family:Inter, sans-serif">
-<section id="cover" data-transition="fade" style="background:var(--background);padding:128px;display:flex;flex-direction:column;justify-content:center;gap:32px">
-<x-shape kind="ellipse" style="position:absolute;left:1480px;top:96px;width:320px;height:320px;background:var(--surface)"></x-shape>
-<h1 style="font-size:120px;font-weight:700;color:var(--text)">Slides playground</h1>
+<section id="cover" data-transition="magic" style="background:var(--background);padding:128px;display:flex;flex-direction:column;justify-content:center;gap:32px">
+<x-shape id="orb" kind="ellipse" style="position:absolute;left:1480px;top:96px;width:320px;height:320px;background:var(--surface)"></x-shape>
+<h1 id="title" style="font-size:120px;font-weight:700;color:var(--text)">Slides playground</h1>
 <p style="font-size:40px;color:var(--muted)">What the format can say, on four slides</p>
 <hr style="width:160px;border-top:4px solid var(--accent)">
-<aside>Open with what the deck is for. Switch the theme under Deck to see every slide follow it.</aside>
+<aside>Open with what the deck is for. Switch the theme to see every slide follow it; go to the next slide to see the title and the circle move.</aside>
 </section>
 <section id="points" data-transition="push" style="background:var(--background);color:var(--text);padding:128px;display:flex;flex-direction:column;gap:48px">
-<h2 style="font-size:72px;font-weight:600">Three points</h2>
+<h2 id="title" style="font-size:72px;font-weight:600">Three points</h2>
+<x-shape id="orb" kind="ellipse" style="position:absolute;left:1600px;top:760px;width:160px;height:160px;background:var(--surface)"></x-shape>
 <ul style="font-size:40px;line-height:1.5">
 <li><b>Bold</b>, <i>italic</i>, <u>underline</u> and <s>struck</s> runs</li>
 <li>A <a href="https://github.com/jannchie/slides">link</a> and <span style="color:var(--accent)">accented</span> words</li>

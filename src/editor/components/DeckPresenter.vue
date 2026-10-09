@@ -14,7 +14,7 @@ import {
   type App,
 } from "vue"
 
-import { DECK_BASE_CSS, DECK_HEIGHT, DECK_WIDTH, type Deck } from "../../index"
+import { DECK_BASE_CSS, DECK_HEIGHT, DECK_WIDTH, deckMagicMove, type Deck } from "../../index"
 import { fontFaceRule } from "../../dom"
 import { useDialogFocus } from "../support/dialog-focus"
 
@@ -48,6 +48,8 @@ const state = reactive({ position: Math.max(order.value.indexOf(props.start), 0)
 /** The slide on its way out, and how many of its builds were showing when it left. */
 const leaving = shallowRef<{ index: number; animation: string; step: number } | undefined>()
 const entering = ref<string>()
+/** The 1920×1080 box both slides are drawn in during a transition. */
+const slideBox = useTemplateRef<HTMLElement>("slideBox")
 
 const overlay = useTemplateRef<HTMLElement>("overlay")
 // Escape is the show's own key, heard on the window with the rest of them.
@@ -125,11 +127,12 @@ const TRANSITIONS: Record<
     back: { out: "deck-fade-out", in: "deck-fade-in" },
     ms: 400,
   },
+  // The rest of the two slides cross-fade; what is on both moves (`deckMagicMove`).
   magic: {
     out: "deck-fade-out",
     in: "deck-fade-in",
     back: { out: "deck-fade-out", in: "deck-fade-in" },
-    ms: 500,
+    ms: 600,
   },
   push: {
     out: "deck-push-out",
@@ -184,6 +187,18 @@ function goTo(position: number, forward: boolean) {
     // was, with only the builds the audience had already seen.
     if (leaving.value !== undefined) {
       showBuilds(leaving.value.step, false, ".deck-leaving")
+    }
+
+    // Both slides are drawn now, where they will be: what they share can move.
+    const box = slideBox.value
+
+    if (transition === "magic" && motion !== undefined && leaving.value !== undefined && box !== null) {
+      const from = box.querySelector<HTMLElement>(".deck-leaving .deck-slide")
+      const to = box.querySelector<HTMLElement>(".deck-current .deck-slide")
+
+      if (from !== null && to !== null) {
+        deckMagicMove(from, to, box, motion.ms)
+      }
     }
   })
 }
@@ -458,6 +473,7 @@ onBeforeUnmount(() => {
       />
       <div v-else ref="stageWrap" class="absolute inset-0 overflow-hidden" @click="onClick">
         <div
+          ref="slideBox"
           class="absolute left-1/2 top-1/2"
           :style="{ width: '1920px', height: '1080px', transform: `translate(-50%, -50%) scale(${scale})` }"
         >

@@ -15,7 +15,7 @@ import sample from "./sample-deck.html?raw"
  * and do not survive a reload: a playground has no server to keep them.
  */
 // Bumped when the sample changes, so a stored deck from before does not hide it.
-const DECK_KEY = "slides-playground:deck:2"
+const DECK_KEY = "slides-playground:deck:3"
 const PREFERENCES_KEY = "slides-playground:preferences"
 
 function stored(key: string): string | null {
