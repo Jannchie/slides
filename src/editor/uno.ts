@@ -52,9 +52,21 @@ const declare = (colors: Record<string, string>) =>
 
 /**
  * The tokens. Light on `.slides-editor`; dark wherever `data-scheme="dark"`
- * says so, on the editor's box or any ancestor. Everything not a colour is the
- * same in both.
+ * says so, on the editor's box or any ancestor; and where nothing says either,
+ * whatever the reader's system is set to, so an editor dropped on a page that
+ * has no scheme of its own still follows day and night. A host that names a
+ * scheme decides it. Everything not a colour is the same in both.
  */
+/** What dark changes beside the colours. */
+const DARK_REST = "--slides-shadow:0 8px 24px rgb(0 0 0 / .5),0 0 0 1px var(--slides-line);color-scheme:dark"
+
+/**
+ * An editor no host has given a scheme: no `data-scheme` on its box or above
+ * it. Inside `:where`, so the system's choice weighs no more than the light
+ * default it replaces, and a host's own override still wins without a fight.
+ */
+const DARK_SCHEME_UNSAID = ":where(.slides-editor:not([data-scheme]):not([data-scheme] .slides-editor))"
+
 const TOKENS = [
   `:where(.slides-editor){${declare(LIGHT)}`,
   // No colour for an accent: the accent is the ink, and a pressed or hovered
@@ -74,8 +86,8 @@ const TOKENS = [
   "--slides-control-height:28px;",
   "--slides-shadow:0 8px 24px rgb(0 0 0 / .12),0 0 0 1px var(--slides-line);",
   "font-family:var(--slides-font-sans);color:var(--slides-text);color-scheme:light}",
-  `:where([data-scheme="dark"]) :where(.slides-editor),:where(.slides-editor[data-scheme="dark"]){${declare(DARK)}`,
-  "--slides-shadow:0 8px 24px rgb(0 0 0 / .5),0 0 0 1px var(--slides-line);color-scheme:dark}",
+  `@media (prefers-color-scheme:dark){${DARK_SCHEME_UNSAID}{${declare(DARK)}${DARK_REST}}}`,
+  `:where([data-scheme="dark"]) :where(.slides-editor),:where(.slides-editor[data-scheme="dark"]){${declare(DARK)}${DARK_REST}}`,
 ].join("")
 
 /**

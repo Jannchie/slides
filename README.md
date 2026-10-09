@@ -87,7 +87,7 @@ Overriding it is meant to be easy, at three depths:
 | controls | `slides-field` `slides-field-box` `slides-number-field` `slides-color-field` `slides-button` `slides-icon-button` `slides-tool` `slides-segmented` `slides-segment` `slides-segment-on` `slides-popover` `slides-menu-item` `slides-label` |
 | format pane | `slides-inspector-section` `slides-inspector-heading` `slides-inspector-row` `slides-inspector-label` `slides-inspector-controls` |
 
-The defaults sit inside `:where()`, so they weigh nothing, and the reset that comes with them touches only the editor's own boxes. Dark mode follows `data-scheme="dark"` on the editor's box or any ancestor of it.
+The defaults sit inside `:where()`, so they weigh nothing, and the reset that comes with them touches only the editor's own boxes. The editor's own chrome is light or dark by `data-scheme="light"` or `"dark"` on its box or any ancestor; with neither, it follows the reader's system. The slides keep the colours their author gave them in either: a deck is presented and exported as it was designed.
 
 ## What is left as an import
 
