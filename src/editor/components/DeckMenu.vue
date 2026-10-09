@@ -76,7 +76,7 @@ function keepFocus(event: MouseEvent) {
       <div
         v-if="open"
         ref="floating"
-        class="popover max-h-[var(--floating-max-height)] overflow-y-auto"
+        class="slides-editor popover max-h-[var(--floating-max-height)] overflow-y-auto"
         :style="floatingStyles"
         @mousedown="keepFocus"
       >

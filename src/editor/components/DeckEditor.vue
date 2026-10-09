@@ -1114,7 +1114,7 @@ const hasSelection = computed(() => selection.value.length > 0)
 <template>
   <div
     ref="root"
-    class="flex h-full min-h-0 flex-col outline-none"
+    class="slides-editor flex h-full min-h-0 flex-col outline-none"
     tabindex="-1"
     @keydown="onKeydown"
     @keyup="onKeyup"

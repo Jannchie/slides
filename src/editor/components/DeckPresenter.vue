@@ -440,7 +440,7 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <div
       ref="overlay"
-      class="fixed inset-0 z-[60] bg-black outline-none"
+      class="slides-editor fixed inset-0 z-[60] bg-black outline-none"
       role="dialog"
       aria-modal="true"
       tabindex="-1"

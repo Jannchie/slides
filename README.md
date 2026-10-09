@@ -52,8 +52,8 @@ The editor speaks its own status to screen readers, and its presenter is a real 
 
 ## Styles
 
-- **A host that runs UnoCSS** spreads `deckEditorShortcuts` and `deckEditorColors` from `@jannchie/slides/uno` into its own config, passes `deckEditorIcons` to `presetIcons` (which needs `@jannchie/iconify-json` installed), and scans `node_modules/@jannchie/slides/dist/*.js` for the editor's classes. The editor's `field` or `popover` then has one definition on the page.
-- **Anywhere else**, load `@jannchie/slides/style.css`. It contains the editor's classes and no reset.
+- **A host that runs UnoCSS** spreads `deckEditorShortcuts`, `deckEditorColors` and `deckEditorPreflights` from `@jannchie/slides/uno` into its own config, passes `deckEditorIcons` to `presetIcons` (which needs `@jannchie/iconify-json` installed), and scans `node_modules/@jannchie/slides/dist/*.js` for the editor's classes. The editor's `field` or `popover` then has one definition on the page.
+- **Anywhere else**, load `@jannchie/slides/style.css`. It contains the editor's classes and a reset kept to the editor's own boxes (`.slides-editor`), so it draws the same on a page with any reset or none, and leaves the rest of that page alone.
 
 Dark mode follows `data-scheme="dark"` on the editor's box or any ancestor of it.
 

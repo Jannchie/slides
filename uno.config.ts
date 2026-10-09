@@ -1,7 +1,12 @@
 import presetIcons from "@unocss/preset-icons"
 import { defineConfig, presetWind4 } from "unocss"
 
-import { deckEditorColors, deckEditorIcons, deckEditorShortcuts } from "./src/editor/uno"
+import {
+  deckEditorColors,
+  deckEditorIcons,
+  deckEditorPreflights,
+  deckEditorShortcuts,
+} from "./src/editor/uno"
 
 // The stylesheet the package builds for a host that does not run UnoCSS
 // itself (`dist/style.css`). A host that does spreads the same shortcuts and
@@ -22,12 +27,14 @@ export default defineConfig({
     font: { num: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" },
   },
   shortcuts: deckEditorShortcuts,
+  preflights: deckEditorPreflights,
   presets: [
     presetWind4({
       // Dark is said the way the web app says it, on an ancestor: a host
       // sets `data-scheme="dark"` on the editor's box or anywhere above it.
       dark: { dark: '[data-scheme="dark"]', light: '[data-scheme="light"]' },
-      // The host's page keeps its own reset; the editor brings only its classes.
+      // The host's page keeps its own reset; the editor brings one for its
+      // own boxes (`deckEditorPreflights`) and nothing for anyone else's.
       preflights: { reset: false },
     }),
     presetIcons(deckEditorIcons),

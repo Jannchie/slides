@@ -35,6 +35,41 @@ export const deckEditorIcons = {
   extraProperties: { display: "inline-block", "vertical-align": "middle" },
 }
 
+/**
+ * The ground the editor's classes are written on: what a Tailwind-style
+ * preflight does, kept to the editor's own boxes (`.slides-editor` — the editor,
+ * its presenter and any panel it teleports out). The classes assume it — `border`
+ * sets a width and needs the style this sets, a `<button>` has to have lost its
+ * face — and a page that has no such reset, or a different one, must not be
+ * what decides whether the editor draws. Inside `:where`, so it weighs nothing:
+ * any class, the slides' own sheet included, wins over it.
+ */
+const OWN = ":where(.slides-editor, .slides-editor *)"
+// A pseudo-element cannot sit inside `:where`, so it hangs off the outside.
+const SCOPE = `${OWN},${OWN}::before,${OWN}::after`
+const IN = (selectors: string) => `:where(.slides-editor) :where(${selectors})`
+
+export const deckEditorPreflights = [
+  {
+    getCSS: () =>
+      [
+        `${SCOPE}{box-sizing:border-box;margin:0;padding:0;border:0 solid}`,
+        `${IN("h1,h2,h3,h4,h5,h6")}{font-size:inherit;font-weight:inherit}`,
+        `${IN("ol,ul,menu")}{list-style:none}`,
+        `${IN("a")}{color:inherit;text-decoration:inherit}`,
+        `${IN("b,strong")}{font-weight:bolder}`,
+        `${IN("img,svg,video,canvas,iframe")}{display:block;vertical-align:middle}`,
+        `${IN("img,video")}{max-width:100%;height:auto}`,
+        `${IN("table")}{text-indent:0;border-color:inherit;border-collapse:collapse}`,
+        `${IN("button,input,select,optgroup,textarea")}{font:inherit;font-feature-settings:inherit;letter-spacing:inherit;color:inherit;border-radius:0;background-color:transparent;opacity:1}`,
+        `${IN("button,input[type=button],input[type=reset],input[type=submit]")}{appearance:button}`,
+        `${IN("textarea")}{resize:vertical}`,
+        `${OWN}::placeholder{opacity:1;color:color-mix(in oklab,currentColor 50%,transparent)}`,
+        `${IN("[hidden]:not([hidden=until-found])")}{display:none!important}`,
+      ].join("\n"),
+  },
+]
+
 export const deckEditorShortcuts = {
   surface: "bg-black/4 dark:bg-white/5",
   "surface-hover": "hover:bg-black/6 dark:hover:bg-white/8",
