@@ -67,6 +67,8 @@ import { DeckEditor } from "@jannchie/slides/react"
 
 Saving, versions and conflicts belong to the host.
 
+On a phone — a touch screen, and an editor narrower than 640px — the editor reads rather than edits, whatever `editable` says: the slide fills the width, the slides run in a strip beneath it, and a swipe goes from one to the next, in the presenter too. A narrow editor on a computer still edits.
+
 The editor speaks its own status to screen readers, and its presenter is a real modal (`aria-modal="true"`, everything outside it `inert`). A host whose keyboard shortcuts should wait while a modal is open can ask the document for one.
 
 ## Styles

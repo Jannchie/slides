@@ -88,6 +88,8 @@ const emit = defineEmits<{
   textChange: [nodes: DeckNode[]]
   textDone: []
   textKey: [event: KeyboardEvent, element: HTMLElement]
+  /** A reader swept the slide aside with a finger: to the next (1) or the previous (-1). */
+  swipe: [direction: 1 | -1]
   /** A right click: where, and the deepest thing under it, if anything. */
   menu: [at: { x: number; y: number }, under: DeckPath | undefined]
 }>()
@@ -815,6 +817,32 @@ function snapLinesFor(exclude: readonly DeckPath[]): SnapLines {
   )
 }
 
+/** Where a finger touched down on a slide that cannot be edited, to tell a swipe from a tap. */
+let swipeFrom: { x: number; y: number } | undefined
+
+function onSwipeStart(event: PointerEvent) {
+  swipeFrom =
+    !props.editable && event.pointerType === "touch" ? { x: event.clientX, y: event.clientY } : undefined
+}
+
+function onSwipeEnd(event: PointerEvent) {
+  const from = swipeFrom
+
+  swipeFrom = undefined
+
+  if (from === undefined || event.pointerType !== "touch") {
+    return
+  }
+
+  const dx = event.clientX - from.x
+  const dy = event.clientY - from.y
+
+  // Across, and far enough to mean it: a scroll down the page is not a swipe.
+  if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+    emit("swipe", dx < 0 ? 1 : -1)
+  }
+}
+
 function onPointerDown(event: PointerEvent) {
   if (event.button !== 0 || slide.value === undefined) {
     return
@@ -1389,8 +1417,14 @@ defineExpose({
     v-bind="$attrs"
     @wheel="onWheel"
     @pointerdown.capture="startPan"
+    @pointerdown="onSwipeStart"
     @pointermove="onPanMove"
-    @pointerup="endPan"
+    @pointerup="
+      (event: PointerEvent) => {
+        onSwipeEnd(event)
+        endPan(event)
+      }
+    "
     @pointercancel="endPan"
     @pointerdown.self="emit('select', [], [])"
     @contextmenu.self.prevent="

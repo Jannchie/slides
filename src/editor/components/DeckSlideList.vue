@@ -17,6 +17,8 @@ const props = defineProps<{
   deck: Deck
   slideIndex: number
   editable: boolean
+  /** A strip across, under the slide, rather than a column beside it: a phone's. */
+  horizontal?: boolean
   resolveAsset: (src: string) => string
 }>()
 
@@ -87,7 +89,12 @@ function onDrop(event: DragEvent) {
 }
 
 function onKeydown(event: KeyboardEvent, index: number) {
-  const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0
+  const step =
+    event.key === "ArrowDown" || event.key === "ArrowRight"
+      ? 1
+      : event.key === "ArrowUp" || event.key === "ArrowLeft"
+        ? -1
+        : 0
 
   // A key the list answers is not also the stage's: Alt+Arrow moving a slide
   // must not nudge what is selected, nor Delete remove it.
@@ -211,8 +218,14 @@ watch(
     </div>
 
     <!-- The padding is on the list, not the scroll container; see `scroll-list`. -->
-    <div class="min-h-0 flex-1 overflow-y-auto">
-      <ol ref="list" class="m-0 flex list-none flex-col gap-1.5 p-2" @dragover.prevent @drop="onDrop">
+    <div class="min-h-0 flex-1" :class="horizontal ? 'overflow-x-auto overflow-y-hidden' : 'overflow-y-auto'">
+      <ol
+        ref="list"
+        class="m-0 flex list-none gap-1.5 p-2"
+        :class="horizontal ? 'flex-row' : 'flex-col'"
+        @dragover.prevent
+        @drop="onDrop"
+      >
         <li
           v-for="(item, index) in deck.slides"
           :key="item.id"

@@ -10,6 +10,7 @@ import {
   watch,
   watchEffect,
 } from "vue"
+import { useMediaQuery } from "@vueuse/core"
 
 import {
   DECK_HEIGHT,
@@ -127,6 +128,24 @@ watch(
  */
 const width = ref(0)
 const COMPACT_INSPECTOR = 900
+
+/**
+ * A phone: a touch screen, and an editor narrower than a tablet. It reads the
+ * deck rather than editing it — the slide fills the width, the slides run in
+ * a strip beneath it, and a swipe goes from one to the next. A narrow editor
+ * on a computer is still an editor: it is the touch that says phone.
+ */
+const coarse = useMediaQuery("(pointer: coarse)")
+const phone = computed(() => coarse.value && width.value > 0 && width.value < 640)
+/** What this editor may change: what the host allows, unless it is on a phone. */
+const canEdit = computed(() => props.editable && !phone.value)
+
+// A phone reads, and its notes wait to be asked for.
+watch(phone, (on) => {
+  if (on) {
+    notesOpen.value = false
+  }
+})
 const inspectorChoice = ref<boolean>()
 const inspectorFloats = computed(() => width.value > 0 && width.value < COMPACT_INSPECTOR)
 const inspectorOpen = computed({
@@ -219,7 +238,7 @@ function restore(state: EditorSelection | undefined) {
 }
 
 function commit(next: Deck, key?: string) {
-  if (!props.editable || next === deck.value) {
+  if (!canEdit.value || next === deck.value) {
     return
   }
 
@@ -243,7 +262,7 @@ function redo() {
 }
 
 function step(take: () => EditorSelection | undefined) {
-  if (!props.editable) {
+  if (!canEdit.value) {
     return
   }
 
@@ -275,7 +294,7 @@ function selectFromInspector(paths: DeckPath[]) {
 const caret = ref<Point | "start" | "all">()
 
 function startEditing(path: DeckPath, at?: Point | "start" | "all") {
-  if (!props.editable) {
+  if (!canEdit.value) {
     return
   }
 
@@ -299,9 +318,9 @@ function finishEditing() {
 // The deck stops being the reader's mid-sentence: the text editor closes
 // rather than going on showing keystrokes nothing will keep.
 watch(
-  () => props.editable,
-  (editable) => {
-    if (!editable) {
+  () => canEdit.value,
+  (editing) => {
+    if (!editing) {
       finishEditing()
     }
   },
@@ -468,7 +487,7 @@ const ink = computed(() => deck.value.style.color ?? "var(--text)")
 function insertNodes(nodes: readonly DeckNode[], key = "insert"): DeckPath[] {
   const current = slide.value
 
-  if (current === undefined || !props.editable) {
+  if (current === undefined || !canEdit.value) {
     return []
   }
 
@@ -658,7 +677,7 @@ function carriesImages(event: DragEvent) {
 }
 
 function onDragOver(event: DragEvent) {
-  if (!props.editable || !carriesImages(event)) {
+  if (!canEdit.value || !carriesImages(event)) {
     return
   }
 
@@ -679,7 +698,7 @@ function onDrop(event: DragEvent) {
 
   const files = [...(event.dataTransfer?.files ?? [])].filter((file) => file.type.startsWith("image/"))
 
-  if (!props.editable || files.length === 0) {
+  if (!canEdit.value || files.length === 0) {
     return
   }
 
@@ -893,7 +912,7 @@ function onCopy(event: ClipboardEvent, cut = false) {
       event.preventDefault()
       event.clipboardData?.setData("text/plain", text)
 
-      if (cut && props.editable) {
+      if (cut && canEdit.value) {
         removeSlide(slideIndex.value)
       }
     }
@@ -915,7 +934,7 @@ function onCopy(event: ClipboardEvent, cut = false) {
 }
 
 function onPaste(event: ClipboardEvent) {
-  if (inSlideList(event) && editingPath.value === undefined && props.editable) {
+  if (inSlideList(event) && editingPath.value === undefined && canEdit.value) {
     const pasted = event.clipboardData?.getData("text/plain") ?? ""
 
     if (pasteSlides(pasted)) {
@@ -925,7 +944,7 @@ function onPaste(event: ClipboardEvent) {
     return
   }
 
-  if (!owningKeys(event) || editingPath.value !== undefined || !props.editable) {
+  if (!owningKeys(event) || editingPath.value !== undefined || !canEdit.value) {
     return
   }
 
@@ -1151,7 +1170,7 @@ async function copySlide(index: number, cut: boolean) {
 }
 
 function openStageMenu(at: { x: number; y: number }, under: DeckPath | undefined) {
-  if (!props.editable) {
+  if (!canEdit.value) {
     return
   }
 
@@ -1237,7 +1256,7 @@ function openStageMenu(at: { x: number; y: number }, under: DeckPath | undefined
 }
 
 function openSlideMenu(index: number, at: { x: number; y: number }) {
-  if (props.editable) {
+  if (canEdit.value) {
     menu.value = { ...at, entries: slideEntries(index) }
   }
 }
@@ -1297,12 +1316,12 @@ function onKeydown(event: KeyboardEvent) {
     return
   }
 
-  if (!props.editable) {
+  if (!canEdit.value) {
     return
   }
 
   // A new slide after this one, as presentation programs have it.
-  if (mod && key === "m" && props.editable) {
+  if (mod && key === "m" && canEdit.value) {
     event.preventDefault()
     addSlide()
     return
@@ -1565,7 +1584,7 @@ const hasSelection = computed(() => selection.value.length > 0)
       :aria-label="t('deck.toolbar')"
     >
       <!-- Reading, the toolbar holds only what reading uses: presenting. -->
-      <template v-if="editable">
+      <template v-if="canEdit">
         <button
           v-for="action in [
             { id: 'undo', icon: 'i-jannchie-undo', run: undo, disabled: !history.canUndo.value },
@@ -1893,14 +1912,14 @@ const hasSelection = computed(() => selection.value.length > 0)
       <span class="flex-1" />
 
       <DeckMenu
-        v-if="editable"
+        v-if="canEdit"
         icon="i-jannchie-palette"
         :label="t('deck.design')"
         show-label
         placement="bottom-end"
       >
         <template #default>
-          <DeckDesign :deck="deck" :editable="editable" @commit="commit" @seal="history.seal()" />
+          <DeckDesign :deck="deck" :editable="canEdit" @commit="commit" @seal="history.seal()" />
         </template>
       </DeckMenu>
       <button type="button" class="slides-tool" :title="t('deck.present')" @click="presenting = 'present'">
@@ -1917,7 +1936,7 @@ const hasSelection = computed(() => selection.value.length > 0)
         <i class="i-jannchie-presentation h-4 w-4" aria-hidden="true" />
       </button>
       <button
-        v-if="editable"
+        v-if="canEdit"
         type="button"
         class="slides-icon-button"
         :class="{ 'slides-pressed': inspectorOpen }"
@@ -1930,12 +1949,14 @@ const hasSelection = computed(() => selection.value.length > 0)
       </button>
     </div>
 
-    <div class="relative min-h-0 flex flex-1">
+    <div class="relative min-h-0 flex flex-1" :class="{ 'flex-col-reverse': phone }">
       <DeckSlideList
-        class="slides-slide-list w-40 shrink-0 border-r border-slides-line bg-slides-bg"
+        class="slides-slide-list shrink-0 bg-slides-bg"
+        :class="phone ? 'h-24 border-t border-slides-line' : 'w-40 border-r border-slides-line'"
+        :horizontal="phone"
         :deck="deck"
         :slide-index="slideIndex"
-        :editable="editable"
+        :editable="canEdit"
         :resolve-asset="resolveAsset"
         @pick="pickSlide"
         @add="addSlide"
@@ -1973,10 +1994,11 @@ const hasSelection = computed(() => selection.value.length > 0)
             :scope="scope"
             :editing-path="editingPath"
             :caret-at="caret"
-            :editable="editable"
+            :editable="canEdit"
             :resolve-asset="resolveAsset"
             @select="select"
             @menu="openStageMenu"
+            @swipe="(direction) => pickSlide(slideIndex + direction)"
             @update="updateChildren"
             @seal="history.seal()"
             @edit="(path, at) => (path === undefined ? finishEditing() : startEditing(path, at))"
@@ -2042,7 +2064,7 @@ const hasSelection = computed(() => selection.value.length > 0)
             class="block h-20 w-full resize-none bg-transparent px-3 pb-2 text-sm outline-none"
             :placeholder="t('deck.notesPlaceholder')"
             :aria-label="t('deck.notes')"
-            :readonly="!editable"
+            :readonly="!canEdit"
             @input="setNotes"
             @blur="history.seal()"
           />
@@ -2050,13 +2072,13 @@ const hasSelection = computed(() => selection.value.length > 0)
       </div>
 
       <DeckInspector
-        v-if="editable && inspectorOpen"
+        v-if="canEdit && inspectorOpen"
         class="slides-inspector w-72 shrink-0 border-l border-slides-line"
         :class="{ 'absolute inset-y-0 right-0 z-20 shadow-[var(--slides-shadow)]': inspectorFloats }"
         :deck="deck"
         :slide-index="slideIndex"
         :selection="selection"
-        :editable="editable"
+        :editable="canEdit"
         :measure="(path) => stage?.measure(path)"
         @commit="commit"
         @seal="history.seal()"

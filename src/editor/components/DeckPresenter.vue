@@ -277,6 +277,34 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
+/** Where a finger touched down, to tell a swipe from the tap that `onClick` reads. */
+let swipeFrom: { x: number; y: number } | undefined
+
+function onSwipeStart(event: PointerEvent) {
+  swipeFrom = event.pointerType === "touch" ? { x: event.clientX, y: event.clientY } : undefined
+}
+
+/** A swipe goes on or back, as the arrows do: towards the left is on. */
+function onSwipeEnd(event: PointerEvent) {
+  const from = swipeFrom
+
+  swipeFrom = undefined
+
+  if (from === undefined) {
+    return
+  }
+
+  const dx = event.clientX - from.x
+
+  if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(event.clientY - from.y) * 1.5) {
+    if (dx < 0) {
+      forward()
+    } else {
+      back()
+    }
+  }
+}
+
 function onClick(event: MouseEvent) {
   // The first click after a refused full screen goes there instead of on.
   if (retryFullscreen()) {
@@ -471,7 +499,14 @@ onBeforeUnmount(() => {
         :labels="consoleLabels"
         @step="step"
       />
-      <div v-else ref="stageWrap" class="absolute inset-0 overflow-hidden" @click="onClick">
+      <div
+        v-else
+        ref="stageWrap"
+        class="absolute inset-0 touch-pan-y overflow-hidden"
+        @click="onClick"
+        @pointerdown="onSwipeStart"
+        @pointerup="onSwipeEnd"
+      >
         <div
           ref="slideBox"
           class="absolute left-1/2 top-1/2"
