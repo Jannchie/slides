@@ -1,0 +1,87 @@
+/* The page around the editor, in the hand of icons.jannchie.com: hairlines
+   rather than cards, ink for an accent, Inter for words and Berkeley Mono for
+   labels and code. The editor brings its own classes and reset; everything
+   here is the playground's. */
+@font-face {
+  font-family: "Berkeley Mono";
+  src: url("https://cdn.jannchie.com/fonts/variants/BerkeleyMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Berkeley Mono";
+  src: url("https://cdn.jannchie.com/fonts/variants/BerkeleyMono-Oblique.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Berkeley Mono";
+  src: url("https://cdn.jannchie.com/fonts/variants/BerkeleyMono-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Berkeley Mono";
+  src: url("https://cdn.jannchie.com/fonts/variants/BerkeleyMono-Bold-Oblique.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  --bg: #fbfbfc;
+  --surface: #ffffff;
+  --sunken: #f3f3f5;
+  --line: #e6e6ea;
+  --line-strong: #d4d4da;
+  --text: #0e0e11;
+  --text-2: #4a4b53;
+  --muted: #6e6f78;
+  /* No colour for an accent: the accent is the ink, and a pressed control is
+     a faint wash of it. */
+  --accent-soft: color-mix(in srgb, var(--text) 9%, transparent);
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: "Berkeley Mono", ui-monospace, "Sarasa Mono SC", "Microsoft YaHei", monospace;
+  color-scheme: light;
+}
+
+:root[data-scheme="dark"] {
+  --bg: #09090b;
+  --surface: #0e0e11;
+  --sunken: #141418;
+  --line: #1d1d22;
+  --line-strong: #2a2a31;
+  --text: #f2f2f4;
+  --text-2: #c2c3ca;
+  --muted: #9a9ba4;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+select {
+  font: inherit;
+  color: inherit;
+}

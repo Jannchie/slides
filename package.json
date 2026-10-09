@@ -64,6 +64,7 @@
     "access": "public"
   },
   "scripts": {
+    "dev": "vite --config playground/vite.config.ts",
     "build": "vite build && vue-tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm build",
     "test": "vitest run",
@@ -81,6 +82,7 @@
   },
   "devDependencies": {
     "@jannchie/iconify-json": "^0.7.0",
+    "@types/node": "^24.19.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@unocss/preset-icons": "^66.10.5",

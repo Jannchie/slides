@@ -1,5 +1,5 @@
 {
   "semi": false,
   "printWidth": 110,
-  "ignorePatterns": ["**/*.md"]
+  "ignorePatterns": ["**/*.md", "playground/*.html"]
 }
