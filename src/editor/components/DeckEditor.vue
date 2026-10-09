@@ -1564,26 +1564,27 @@ const hasSelection = computed(() => selection.value.length > 0)
       role="toolbar"
       :aria-label="t('deck.toolbar')"
     >
-      <button
-        v-for="action in [
-          { id: 'undo', icon: 'i-jannchie-undo', run: undo, disabled: !history.canUndo.value },
-          { id: 'redo', icon: 'i-jannchie-redo', run: redo, disabled: !history.canRedo.value },
-        ]"
-        :key="action.id"
-        type="button"
-        class="slides-icon-button disabled:opacity-35"
-        :title="t(`deck.action.${action.id}`)"
-        :aria-label="t(`deck.action.${action.id}`)"
-        :disabled="!editable || action.disabled"
-        @mousedown.prevent
-        @click="action.run"
-      >
-        <i :class="action.icon" class="h-4 w-4" aria-hidden="true" />
-      </button>
-
-      <span class="mx-1 h-4 w-px bg-slides-line" aria-hidden="true" />
-
+      <!-- Reading, the toolbar holds only what reading uses: presenting. -->
       <template v-if="editable">
+        <button
+          v-for="action in [
+            { id: 'undo', icon: 'i-jannchie-undo', run: undo, disabled: !history.canUndo.value },
+            { id: 'redo', icon: 'i-jannchie-redo', run: redo, disabled: !history.canRedo.value },
+          ]"
+          :key="action.id"
+          type="button"
+          class="slides-icon-button disabled:opacity-35"
+          :title="t(`deck.action.${action.id}`)"
+          :aria-label="t(`deck.action.${action.id}`)"
+          :disabled="action.disabled"
+          @mousedown.prevent
+          @click="action.run"
+        >
+          <i :class="action.icon" class="h-4 w-4" aria-hidden="true" />
+        </button>
+
+        <span class="mx-1 h-4 w-px bg-slides-line" aria-hidden="true" />
+
         <button
           v-for="kind in ['text', 'heading', 'list'] as const"
           :key="kind"
@@ -1891,7 +1892,13 @@ const hasSelection = computed(() => selection.value.length > 0)
 
       <span class="flex-1" />
 
-      <DeckMenu icon="i-jannchie-palette" :label="t('deck.design')" show-label placement="bottom-end">
+      <DeckMenu
+        v-if="editable"
+        icon="i-jannchie-palette"
+        :label="t('deck.design')"
+        show-label
+        placement="bottom-end"
+      >
         <template #default>
           <DeckDesign :deck="deck" :editable="editable" @commit="commit" @seal="history.seal()" />
         </template>
@@ -1910,6 +1917,7 @@ const hasSelection = computed(() => selection.value.length > 0)
         <i class="i-jannchie-presentation h-4 w-4" aria-hidden="true" />
       </button>
       <button
+        v-if="editable"
         type="button"
         class="slides-icon-button"
         :class="{ 'slides-pressed': inspectorOpen }"
@@ -2042,7 +2050,7 @@ const hasSelection = computed(() => selection.value.length > 0)
       </div>
 
       <DeckInspector
-        v-if="inspectorOpen"
+        v-if="editable && inspectorOpen"
         class="slides-inspector w-72 shrink-0 border-l border-slides-line"
         :class="{ 'absolute inset-y-0 right-0 z-20 shadow-[var(--slides-shadow)]': inspectorFloats }"
         :deck="deck"

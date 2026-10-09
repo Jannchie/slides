@@ -162,7 +162,7 @@ watch(
 
 <template>
   <nav class="flex min-h-0 flex-col" :aria-label="t('deck.slide.list')">
-    <div class="flex items-center gap-0.5 border-b border-slides-line px-1.5 py-1">
+    <div v-if="editable" class="flex items-center gap-0.5 border-b border-slides-line px-1.5 py-1">
       <button
         type="button"
         class="slides-icon-button"
