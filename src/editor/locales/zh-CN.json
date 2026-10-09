@@ -212,5 +212,10 @@
   "deck.role.text": "文字",
   "deck.role.muted": "次要文字",
   "deck.role.accent": "强调",
-  "deck.role.line": "线条"
+  "deck.role.line": "线条",
+  "deck.slide.cut": "剪切",
+  "deck.slide.copy": "复制",
+  "deck.slide.paste": "粘贴",
+  "deck.design": "设计",
+  "deck.design.type": "文字"
 }

@@ -212,5 +212,10 @@
   "deck.role.text": "文字",
   "deck.role.muted": "控えめな文字",
   "deck.role.accent": "アクセント",
-  "deck.role.line": "線"
+  "deck.role.line": "線",
+  "deck.slide.cut": "切り取り",
+  "deck.slide.copy": "コピー",
+  "deck.slide.paste": "貼り付け",
+  "deck.design": "デザイン",
+  "deck.design.type": "文字"
 }

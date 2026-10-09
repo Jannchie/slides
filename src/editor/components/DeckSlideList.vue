@@ -114,6 +114,32 @@ function onKeydown(event: KeyboardEvent, index: number) {
     event.preventDefault()
     event.stopPropagation()
     emit("remove", index)
+    return
+  }
+
+  // Enter adds a slide after this one, and Ctrl/Cmd+D copies it, as in a
+  // presentation program's slide list. Home and End go to the ends.
+  const mod = event.ctrlKey || event.metaKey
+
+  if (event.key === "Enter" && !mod && !event.shiftKey && props.editable) {
+    event.preventDefault()
+    event.stopPropagation()
+    emit("pick", index)
+    emit("add")
+    return
+  }
+
+  if (mod && event.key.toLowerCase() === "d" && props.editable) {
+    event.preventDefault()
+    event.stopPropagation()
+    emit("duplicate", index)
+    return
+  }
+
+  if (event.key === "Home" || event.key === "End") {
+    event.preventDefault()
+    event.stopPropagation()
+    emit("pick", event.key === "Home" ? 0 : props.deck.slides.length - 1)
   }
 }
 

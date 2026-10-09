@@ -38,7 +38,8 @@ import { announce } from "../support/announce"
 
 import { formatError, uploadable, useDeckAssets } from "../host"
 import { t } from "../i18n"
-import { themeName, useDeckThemes } from "../themes"
+import { fontOptionsOf, withFamily } from "../fonts"
+import { useDeckThemes } from "../themes"
 import DeckColorField from "./DeckColorField.vue"
 import DeckInspectorRow from "./DeckInspectorRow.vue"
 import DeckNumberField from "./DeckNumberField.vue"
@@ -248,12 +249,6 @@ function setDeck(next: Deck, key: string) {
   }
 }
 
-/** Draw the deck in another theme: every colour that refers to a role follows. */
-function setTheme(id: string) {
-  setDeck({ ...props.deck, theme: id }, "theme")
-  emit("seal")
-}
-
 /** A number typed into a field, as pixels. */
 function numberOf(event: Event) {
   const value = Number((event.target as HTMLInputElement).value)
@@ -373,71 +368,25 @@ function changeTable(edit: TableEdit) {
 // Type
 // ---------------------------------------------------------------------------
 
-/** Faces offered by name: the system's, a few Google Fonts that cover Latin and CJK, and whatever the deck already loads. */
-const FONT_PRESETS = [
-  "system-ui, sans-serif",
-  "Inter",
-  "Noto Sans SC",
-  "Noto Sans JP",
-  "Noto Serif SC",
-  "Source Serif 4",
-  "Playfair Display",
-  "Space Grotesk",
-  "IBM Plex Sans",
-  "DM Sans",
-  "JetBrains Mono",
-  "Georgia, serif",
-]
+const fontOptions = computed(() => fontOptionsOf(props.deck))
 
-const fontOptions = computed(() => {
-  const loaded = props.deck.fontLinks.flatMap((href) =>
-    [...href.matchAll(/family=([^:&]+)/g)].map((match) => decodeURIComponent(match[1]!.replace(/\+/g, " "))),
-  )
+/** A face set on what is selected: written with a fallback, and loaded with the deck when it is a Google Font. */
+function setFamily(family: string) {
+  const next = withFamily(props.deck, family)
 
-  return [...new Set([...loaded, ...FONT_PRESETS])]
-})
-
-const GENERIC = new Set(["system-ui", "sans-serif", "serif", "monospace", "cursive", "Georgia"])
-
-/** A face set by name: written with a generic fallback, and loaded from Google Fonts when it is one. */
-function setFamily(family: string, target: "selection" | "deck") {
-  const known = family.includes(",")
-    ? family
-    : `${/\s/.test(family) ? `'${family}'` : family}, ${/mono/i.test(family) ? "monospace" : /serif|playfair|georgia/i.test(family) && !/sans/i.test(family) ? "serif" : "sans-serif"}`
-  const name = firstFamily(known) ?? family
-  let deck = props.deck
-
-  if (
-    !GENERIC.has(name) &&
-    !deck.fontLinks.some((href) => href.includes(`family=${name.replace(/ /g, "+")}`))
-  ) {
-    deck = {
-      ...deck,
-      fontLinks: [
-        ...deck.fontLinks,
-        `https://fonts.googleapis.com/css2?family=${name.replace(/ /g, "+")}:wght@400;500;600;700&display=swap`,
-      ],
-    }
-  }
-
-  if (target === "deck") {
-    setDeck({ ...deck, style: patchStyle("body", deck.style, { "font-family": known }) }, "font")
-  } else {
-    emit(
-      "commit",
-      updateSlideChildren(deck, props.slideIndex, (children) =>
-        selected.value.reduce<DeckNode[]>(
-          (nodes, { path, node }) =>
-            deckStyleApplies(tagOf(node), "font-family")
-              ? updateAt(nodes, path, (current) => patchNodeStyle(current, { "font-family": known }))
-              : nodes,
-          [...children],
-        ),
+  emit(
+    "commit",
+    updateSlideChildren(next.deck, props.slideIndex, (children) =>
+      selected.value.reduce<DeckNode[]>(
+        (nodes, { path, node }) =>
+          deckStyleApplies(tagOf(node), "font-family")
+            ? updateAt(nodes, path, (current) => patchNodeStyle(current, { "font-family": next.family }))
+            : nodes,
+        [...children],
       ),
-      "style:font-family",
-    )
-  }
-
+    ),
+    "style:font-family",
+  )
   emit("seal")
 }
 
@@ -680,43 +629,6 @@ function applySlideMarkup() {
   emit("seal")
 }
 
-const newFont = ref("")
-
-function addFont() {
-  const family = newFont.value.trim()
-
-  if (family === "" || !/^[A-Za-z][\w ]{0,39}$/.test(family)) {
-    return
-  }
-
-  setDeck(
-    {
-      ...props.deck,
-      fontLinks: [
-        ...props.deck.fontLinks,
-        `https://fonts.googleapis.com/css2?family=${family.replace(/ /g, "+")}:wght@400;500;600;700&display=swap`,
-      ],
-    },
-    "fonts",
-  )
-  emit("seal")
-  newFont.value = ""
-}
-
-function removeFont(href: string) {
-  setDeck(
-    { ...props.deck, fontLinks: props.deck.fontLinks.filter((candidate) => candidate !== href) },
-    "fonts",
-  )
-  emit("seal")
-}
-
-function fontName(href: string) {
-  return [...href.matchAll(/family=([^:&]+)/g)]
-    .map((match) => decodeURIComponent(match[1]!.replace(/\+/g, " ")))
-    .join(", ")
-}
-
 /** The slide's background made a colour or a gradient, starting from what it was. */
 function setSlideFill(kind: "solid" | "gradient") {
   const current = slide.value?.style.background
@@ -899,7 +811,7 @@ function setHidden(event: Event) {
             class="slides-field"
             :value="firstFamily(common('font-family')) ?? ''"
             :aria-label="label('font')"
-            @change="setFamily(($event.target as HTMLSelectElement).value, 'selection')"
+            @change="setFamily(($event.target as HTMLSelectElement).value)"
           >
             <option value="" disabled>{{ unset }}</option>
             <option v-for="family in fontOptions" :key="family" :value="firstFamily(family)">
@@ -1631,112 +1543,6 @@ function setHidden(event: Event) {
           <input type="checkbox" class="h-3.5 w-3.5" :checked="slide.hidden === true" @change="setHidden" />
           <span>{{ label("hidden") }}</span>
         </label>
-      </section>
-
-      <section class="slides-inspector-section">
-        <h3 class="slides-inspector-heading">{{ label("deck") }}</h3>
-        <div class="slides-inspector-row !items-start">
-          <span class="slides-inspector-label leading-[var(--slides-control-height)]">{{
-            label("theme")
-          }}</span>
-          <div
-            class="slides-theme-picker min-w-0 grid grid-cols-2 gap-1.5"
-            role="radiogroup"
-            :aria-label="label('theme')"
-          >
-            <button
-              v-for="option in themes()"
-              :key="option.id"
-              type="button"
-              role="radio"
-              class="slides-theme-option min-w-0 flex flex-col gap-1 rounded-[var(--slides-radius)] p-1 text-left slides-focus slides-hover"
-              :class="option.id === theme.id ? 'ring-1.5 ring-slides-focus' : ''"
-              :aria-checked="option.id === theme.id"
-              :title="themeName(option)"
-              @click="setTheme(option.id)"
-            >
-              <span
-                class="relative h-10 w-full flex items-end gap-1 overflow-hidden rounded-[calc(var(--slides-radius)-2px)] px-1.5 pb-1 ring-1 ring-inset"
-                :style="{ background: option.colors.background, '--tw-ring-color': option.colors.line }"
-                aria-hidden="true"
-              >
-                <span class="text-sm font-semibold leading-none" :style="{ color: option.colors.text }"
-                  >Aa</span
-                >
-                <span class="mb-0.5 h-1 w-4 rounded-full" :style="{ background: option.colors.accent }" />
-                <span class="mb-0.5 h-1 w-3 rounded-full" :style="{ background: option.colors.muted }" />
-              </span>
-              <span class="truncate px-0.5 slides-ink-2">{{ themeName(option) }}</span>
-            </button>
-          </div>
-        </div>
-        <DeckInspectorRow :label="label('font')">
-          <select
-            class="slides-field"
-            :value="firstFamily(deck.style['font-family']) ?? ''"
-            :aria-label="label('font')"
-            @change="setFamily(($event.target as HTMLSelectElement).value, 'deck')"
-          >
-            <option value="" disabled>{{ label("font") }}</option>
-            <option v-for="family in fontOptions" :key="family" :value="firstFamily(family)">
-              {{ firstFamily(family) }}
-            </option>
-          </select>
-        </DeckInspectorRow>
-        <DeckInspectorRow :label="label('color')">
-          <DeckColorField
-            :theme="theme"
-            :placeholder="unset"
-            :value="deck.style.color"
-            :label="label('color')"
-            @change="
-              (value) =>
-                setDeck({ ...deck, style: patchStyle('body', deck.style, { color: value }) }, 'color')
-            "
-            @done="emit('seal')"
-          />
-        </DeckInspectorRow>
-        <div class="slides-inspector-row !items-start">
-          <span class="slides-inspector-label leading-[var(--slides-control-height)]">{{
-            label("fonts")
-          }}</span>
-          <div class="min-w-0 flex flex-col gap-1.5">
-            <ul v-if="deck.fontLinks.length > 0" class="flex flex-col">
-              <li
-                v-for="href in deck.fontLinks"
-                :key="href"
-                class="h-[var(--slides-control-height)] flex items-center gap-1 rounded-[var(--slides-radius)] pl-2 slides-hover"
-              >
-                <span class="min-w-0 flex-1 truncate">{{ fontName(href) }}</span>
-                <button
-                  type="button"
-                  class="slides-icon-button !h-6 !w-6"
-                  :title="t('deck.removeFont')"
-                  :aria-label="t('deck.removeFont')"
-                  @click="removeFont(href)"
-                >
-                  <i class="i-jannchie-x h-3.5 w-3.5" aria-hidden="true" />
-                </button>
-              </li>
-            </ul>
-            <form class="flex gap-1.5" @submit.prevent="addFont">
-              <input
-                v-model="newFont"
-                class="slides-field min-w-0 flex-1"
-                :placeholder="label('addFont')"
-                :aria-label="label('addFont')"
-              />
-              <button
-                type="submit"
-                class="slides-button w-[var(--slides-control-height)] !px-0"
-                :aria-label="label('addFont')"
-                :disabled="newFont.trim() === ''"
-              >
-                <i class="i-jannchie-plus h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            </form>
-          </div>
-        </div>
       </section>
 
       <details

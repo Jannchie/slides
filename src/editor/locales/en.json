@@ -212,5 +212,10 @@
   "deck.role.text": "Text",
   "deck.role.muted": "Muted text",
   "deck.role.accent": "Accent",
-  "deck.role.line": "Line"
+  "deck.role.line": "Line",
+  "deck.slide.cut": "Cut",
+  "deck.slide.copy": "Copy",
+  "deck.slide.paste": "Paste",
+  "deck.design": "Design",
+  "deck.design.type": "Type"
 }

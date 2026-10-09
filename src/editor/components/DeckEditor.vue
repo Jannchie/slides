@@ -57,6 +57,7 @@ import { formatError, provideDeckAssets, uploadable, type DeckAssetStore } from 
 import { provideDeckThemes, withHostThemes } from "../themes"
 import { setDeckLocale, t } from "../i18n"
 import DeckContextMenu, { type DeckMenuEntry } from "./DeckContextMenu.vue"
+import DeckDesign from "./DeckDesign.vue"
 import DeckInspector from "./DeckInspector.vue"
 import DeckMenu from "./DeckMenu.vue"
 import DeckPresenter from "./DeckPresenter.vue"
@@ -876,7 +877,38 @@ function duplicateSelection() {
 
 let pasteCount = 0
 
+/** Whether a key or clipboard event happened in the slide list, where it is about whole slides. */
+function inSlideList(event: Event) {
+  return event.target instanceof Element && event.target.closest(".slides-slide-list") !== null
+}
+
+/**
+ * The slide on screen as clipboard text: a deck of that one slide, written as
+ * any deck is, so it pastes into this deck, into another one, or into a model's
+ * answer as a slide.
+ */
+function slideClipboardText(index: number) {
+  const slide = deck.value.slides[index]
+
+  return slide === undefined ? undefined : writeDeck({ ...deck.value, slides: [slide] })
+}
+
 function onCopy(event: ClipboardEvent, cut = false) {
+  if (inSlideList(event) && editingPath.value === undefined) {
+    const text = slideClipboardText(slideIndex.value)
+
+    if (text !== undefined) {
+      event.preventDefault()
+      event.clipboardData?.setData("text/plain", text)
+
+      if (cut && props.editable) {
+        removeSlide(slideIndex.value)
+      }
+    }
+
+    return
+  }
+
   if (!owningKeys(event) || selection.value.length === 0 || editingPath.value !== undefined) {
     return
   }
@@ -891,6 +923,16 @@ function onCopy(event: ClipboardEvent, cut = false) {
 }
 
 function onPaste(event: ClipboardEvent) {
+  if (inSlideList(event) && editingPath.value === undefined && props.editable) {
+    const pasted = event.clipboardData?.getData("text/plain") ?? ""
+
+    if (pasteSlides(pasted)) {
+      event.preventDefault()
+    }
+
+    return
+  }
+
   if (!owningKeys(event) || editingPath.value !== undefined || !props.editable) {
     return
   }
@@ -913,8 +955,46 @@ function onPaste(event: ClipboardEvent) {
   pasteText(pasted)
 }
 
+/**
+ * Whole slides, from a copy in the slide list or any deck's HTML: put in after
+ * the slide on screen, each with an id of its own. Answers whether `pasted`
+ * held slides at all.
+ */
+function pasteSlides(pasted: string) {
+  if (!/<section[\s>]/i.test(pasted)) {
+    return false
+  }
+
+  const slides = readDeck(pasted).deck.slides
+
+  if (slides.length === 0) {
+    return false
+  }
+
+  const ids = slideIds()
+  const fresh = slides.map((slide) => {
+    const id = uniqueId(slide.id, ids)
+
+    ids.add(id)
+    return { ...slide, id }
+  })
+  const at = slideIndex.value + 1
+
+  commit(
+    { ...deck.value, slides: [...deck.value.slides.slice(0, at), ...fresh, ...deck.value.slides.slice(at)] },
+    "slides",
+  )
+  history.seal()
+  pickSlide(at)
+  return true
+}
+
 /** Text pasted onto the slide: the subset's HTML as the elements it is, anything else as a paragraph. */
 function pasteText(pasted: string) {
+  if (pasteSlides(pasted)) {
+    return
+  }
+
   pasteCount += 1
 
   const nodes = /^\s*</.test(pasted)
@@ -1026,22 +1106,56 @@ function slideEntries(index: number): DeckMenuEntry[] {
   const hidden = deck.value.slides[index]?.hidden === true
 
   return [
-    { label: t("deck.slide.add"), icon: "i-jannchie-plus", run: addSlide },
-    { label: t("deck.slide.duplicate"), icon: "i-jannchie-copy", run: () => duplicateSlide(index) },
+    { label: t("deck.slide.add"), icon: "i-jannchie-plus", keys: `${MOD}M`, run: addSlide },
+    {
+      label: t("deck.slide.duplicate"),
+      icon: "i-jannchie-copy",
+      keys: `${MOD}D`,
+      run: () => duplicateSlide(index),
+    },
+    "separator",
+    {
+      label: t("deck.slide.cut"),
+      icon: "i-jannchie-scissors",
+      keys: `${MOD}X`,
+      run: () => copySlide(index, true),
+    },
+    { label: t("deck.slide.copy"), keys: `${MOD}C`, run: () => copySlide(index, false) },
+    { label: t("deck.slide.paste"), icon: "i-jannchie-clipboard", keys: `${MOD}V`, run: pasteFromClipboard },
+    "separator",
     {
       label: t(hidden ? "deck.slide.show" : "deck.slide.hide"),
       icon: hidden ? "i-jannchie-eye" : "i-jannchie-eye-off",
       run: () => toggleHidden(index),
     },
-    "separator",
     {
       label: t("deck.slide.delete"),
       icon: "i-jannchie-trash",
+      keys: "Del",
       danger: true,
       disabled: deck.value.slides.length <= 1,
       run: () => removeSlide(index),
     },
   ]
+}
+
+/** A whole slide to the clipboard, for the menu: what Ctrl+C in the slide list writes. */
+async function copySlide(index: number, cut: boolean) {
+  const text = slideClipboardText(index)
+
+  if (text === undefined) {
+    return
+  }
+
+  try {
+    await navigator.clipboard.writeText(text)
+
+    if (cut) {
+      removeSlide(index)
+    }
+  } catch (error) {
+    announce(t("deck.menu.clipboardFailed", { error: formatError(error) }), { assertive: true })
+  }
 }
 
 function openStageMenu(at: { x: number; y: number }, under: DeckPath | undefined) {
@@ -1192,6 +1306,13 @@ function onKeydown(event: KeyboardEvent) {
   }
 
   if (!props.editable) {
+    return
+  }
+
+  // A new slide after this one, as presentation programs have it.
+  if (mod && key === "m" && props.editable) {
+    event.preventDefault()
+    addSlide()
     return
   }
 
@@ -1787,6 +1908,11 @@ const hasSelection = computed(() => selection.value.length > 0)
 
       <span class="flex-1" />
 
+      <DeckMenu icon="i-jannchie-palette" :label="t('deck.design')" show-label placement="bottom-end">
+        <template #default>
+          <DeckDesign :deck="deck" :editable="editable" @commit="commit" @seal="history.seal()" />
+        </template>
+      </DeckMenu>
       <button type="button" class="slides-tool" :title="t('deck.present')" @click="presenting = 'present'">
         <i class="i-jannchie-play h-4 w-4 slides-ink" aria-hidden="true" />
         {{ t("deck.present") }}
