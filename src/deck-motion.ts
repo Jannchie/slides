@@ -30,12 +30,17 @@ type MotionStyle = {
   boxSizing: string
   transformOrigin: string
   flex: string
+  setProperty(name: string, value: string): void
 }
 
 type MotionElement = {
   id: string
   className: string
+  tagName: string
+  innerHTML: string
   textContent: string | null
+  getAttribute(name: string): string | null
+  contains(other: unknown): boolean
   style: MotionStyle
   getBoundingClientRect(): MotionRect
   querySelectorAll(selector: string): ArrayLike<unknown>
@@ -50,7 +55,7 @@ type MotionElement = {
 type MotionGlobals = {
   document: { createElement(tag: string): MotionElement }
   matchMedia?: (query: string) => { matches: boolean }
-  getComputedStyle(element: MotionElement): { opacity: string }
+  getComputedStyle(element: MotionElement): { opacity: string; getPropertyValue(name: string): string }
   setTimeout(run: () => void, delay: number): unknown
 }
 
@@ -67,6 +72,20 @@ export function deckMagicMove(
   duration = 600,
 ): void {
   const browser = globalThis as unknown as MotionGlobals
+  // Inside the function, like everything it uses: its source travels alone.
+  /** The text properties an element takes from around it: what a copy must be told it had. */
+  const INHERITED = [
+    "color",
+    "font-family",
+    "font-size",
+    "font-weight",
+    "font-style",
+    "line-height",
+    "letter-spacing",
+    "text-align",
+    "text-transform",
+    "text-decoration-color",
+  ]
 
   if (
     typeof browser.matchMedia === "function" &&
@@ -93,7 +112,86 @@ export function deckMagicMove(
     (Array.from(root.querySelectorAll("[id]")) as MotionElement[]).filter(
       (element) => element.closest("svg") === null,
     )
-  const sources = new Map(named(from).map((element) => [element.id, element]))
+  // What a slide is made of: its blocks, shapes, pictures and drawings — not a
+  // run of text inside one, nor the inside of a drawing. Outermost first.
+  const partsOf = (root: MotionElement) =>
+    (Array.from(root.querySelectorAll("h1,h2,h3,p,ul,ol,div,img,table,hr,svg")) as MotionElement[]).filter(
+      (element) => {
+        const drawing = element.closest("svg")
+
+        return drawing === null || drawing === element
+      },
+    )
+  // What makes two parts the same thing when nobody named them, the way a
+  // presentation program matches them: the same kind of element drawn the same —
+  // its words and their markup, a shape's kind and fill (which its drawing is),
+  // a picture's source. Where it is and how big are what may differ.
+  const looks = new Map<MotionElement, string>()
+  const looksOf = (element: MotionElement) => {
+    let look = looks.get(element)
+
+    if (look === undefined) {
+      look = `${element.tagName}|${element.getAttribute("class") ?? ""}|${element.getAttribute("src") ?? ""}|${element.innerHTML}`
+      looks.set(element, look)
+    }
+
+    return look
+  }
+
+  const pairs: [MotionElement, MotionElement][] = []
+  const takenFrom: MotionElement[] = []
+  const takenTo: MotionElement[] = []
+  // A part inside one that is already moving moves with it, not again on its own.
+  const within = (element: MotionElement, taken: MotionElement[]) =>
+    taken.some((other) => other === element || other.contains(element))
+  const take = (source: MotionElement, target: MotionElement) => {
+    pairs.push([source, target])
+    takenFrom.push(source)
+    takenTo.push(target)
+  }
+
+  // Named first: an id says which is which.
+  const byId = new Map(named(from).map((element) => [element.id, element]))
+
+  for (const target of named(to)) {
+    const source = byId.get(target.id)
+
+    if (source !== undefined && !within(target, takenTo) && !within(source, takenFrom)) {
+      take(source, target)
+    }
+  }
+
+  // Then by looks: of several alike, the one nearest where this one is.
+  const fromParts = partsOf(from)
+
+  for (const target of partsOf(to)) {
+    if (within(target, takenTo)) {
+      continue
+    }
+
+    const b = boxOf(target, toBox)
+    let nearest: MotionElement | undefined
+    let distance = Number.POSITIVE_INFINITY
+
+    for (const source of fromParts) {
+      if (within(source, takenFrom) || looksOf(source) !== looksOf(target)) {
+        continue
+      }
+
+      const a = boxOf(source, fromBox)
+      const apart = Math.hypot(a.x - b.x, a.y - b.y)
+
+      if (apart < distance) {
+        nearest = source
+        distance = apart
+      }
+    }
+
+    if (nearest !== undefined) {
+      take(nearest, target)
+    }
+  }
+
   const root = to.closest(".deck-root") as MotionElement | null
 
   // The layer the copies move on: the arriving slide's own root and slide, so
@@ -112,13 +210,7 @@ export function deckMagicMove(
 
   const hidden: MotionElement[] = []
 
-  for (const target of named(to)) {
-    const source = sources.get(target.id)
-
-    if (source === undefined) {
-      continue
-    }
-
+  for (const [source, target] of pairs) {
     const a = boxOf(source, fromBox)
     const b = boxOf(target, toBox)
     const copy = target.cloneNode(true) as MotionElement
@@ -133,6 +225,16 @@ export function deckMagicMove(
     copy.style.boxSizing = "border-box"
     copy.style.transformOrigin = "0 0"
     copy.style.flex = "none"
+
+    // What it takes from the slide around it rather than says itself — a
+    // heading's colour is often the section's — written onto the copy, which
+    // moves on a layer that is no slide: otherwise it would change colour, or
+    // face, for as long as it moves.
+    const drawn = browser.getComputedStyle(target)
+
+    for (const property of INHERITED) {
+      copy.style.setProperty(property, drawn.getPropertyValue(property))
+    }
     stage.append(copy)
 
     // Text keeps its shape: a heading is as wide as its column on both slides,

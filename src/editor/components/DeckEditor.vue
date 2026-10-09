@@ -1480,11 +1480,14 @@ function duplicateSlide(index: number) {
   }
 
   const copy: DeckSlide = { ...source, id: uniqueId(`${source.id}-copy`, slideIds()) }
+  // Duplicating a slide and moving what is on it is how a magic move is made:
+  // a slide with no way of leaving of its own leaves for its copy by one.
+  const original: DeckSlide = source.transition === undefined ? { ...source, transition: "magic" } : source
 
   commit(
     {
       ...deck.value,
-      slides: [...deck.value.slides.slice(0, index + 1), copy, ...deck.value.slides.slice(index + 1)],
+      slides: [...deck.value.slides.slice(0, index), original, copy, ...deck.value.slides.slice(index + 1)],
     },
     "slides",
   )
