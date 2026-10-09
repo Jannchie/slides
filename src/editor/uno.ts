@@ -1,3 +1,5 @@
+import { createRequire } from "node:module"
+
 /**
  * How the editor looks, in three layers a host can each reach:
  *
@@ -112,7 +114,9 @@ export const deckEditorColors = {
  */
 export const deckEditorIcons = {
   collections: {
-    jannchie: () => import("@jannchie/iconify-json/icons.json").then((module) => module.default),
+    // Read with Node's own require: this runs in a UnoCSS config, and Node will not
+    // import a JSON module without an import attribute the build cannot keep.
+    jannchie: async () => createRequire(import.meta.url)("@jannchie/iconify-json/icons.json"),
   },
   extraProperties: { display: "inline-block", "vertical-align": "middle" },
 }

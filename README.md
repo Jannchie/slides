@@ -73,7 +73,16 @@ The editor speaks its own status to screen readers, and its presenter is a real 
 
 ## Styles
 
-Load `@jannchie/slides/style.css`, or, in a host that runs UnoCSS, spread `deckEditorShortcuts`, `deckEditorColors` and `deckEditorPreflights` from `@jannchie/slides/uno` into its config, pass `deckEditorIcons` to `presetIcons` (which needs `@jannchie/iconify-json`), and scan `node_modules/@jannchie/slides/dist/*.js` for the editor's classes.
+Load `@jannchie/slides/style.css`, or, in a host that runs UnoCSS, spread `deckEditorShortcuts`, `deckEditorColors` and `deckEditorPreflights` from `@jannchie/slides/uno` into its config and pass `deckEditorIcons` to `presetIcons` (which needs `@jannchie/iconify-json`). The editor arrives built, so UnoCSS reads its classes off its files — scan them, and let the pipeline include them, or the scan reads them and drops them:
+
+```ts
+const slides = join(dirname(createRequire(import.meta.url).resolve("@jannchie/slides/package.json")), "dist/*.js")
+
+content: {
+  pipeline: { include: [/* your own */, /[\\/]@jannchie[\\/]slides[\\/]dist[\\/][^\\/]+\.js$/] },
+  filesystem: [slides.replaceAll("\\", "/")],
+}
+```
 
 Overriding it is meant to be easy, at three depths:
 

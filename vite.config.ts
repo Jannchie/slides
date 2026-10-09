@@ -70,6 +70,8 @@ export default defineConfig({
         /^@floating-ui\//,
         /^@vueuse\//,
         /^@jannchie\/iconify-json($|\/)/,
+        // `./uno` runs in a UnoCSS config, in Node.
+        /^node:/,
       ],
     },
   },

@@ -1,6 +1,6 @@
 {
   "name": "@jannchie/slides",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Slide decks as constrained HTML, and an editor for them: the format, its render tree, a canvas editor with presenter and PPTX export, for Vue, React or any page",
   "license": "MIT",
   "author": "Jianqi Pan <jannchie@gmail.com>",
