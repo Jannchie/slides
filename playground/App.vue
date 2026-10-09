@@ -117,7 +117,6 @@ function reset() {
 
       <div class="opts">
         <div class="opt">
-          <span class="label">Language</span>
           <div class="segmented" role="group" aria-label="Language">
             <button
               v-for="locale in LOCALES"
@@ -132,7 +131,6 @@ function reset() {
         </div>
 
         <div class="opt">
-          <span class="label">Theme</span>
           <div class="segmented" role="group" aria-label="Theme">
             <button
               v-for="option in THEMES"
@@ -149,7 +147,6 @@ function reset() {
         </div>
 
         <div class="opt">
-          <span class="label">Mode</span>
           <div class="segmented" role="group" aria-label="Mode">
             <button type="button" :aria-pressed="preferences.editable" @click="preferences.editable = true">
               <i class="i-jannchie-edit icon" aria-hidden="true" /> Edit
